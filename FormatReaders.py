@@ -6,13 +6,11 @@ class FormatException(Exception):
       Exception.__init__(self, message)
 
 
-# TODO:
-#   Turn into iterator
-#   Parse header in __init__()
-#   Key sample fields with sample names
-#   Delay parsing of extra fields until requested
 class VCFReader(object):
   """A simple VCF parser which can read Naive Variant Caller output."""
+
+  def __iter__(self):
+    return self
 
   def __init__(self, filehandle):
     """Pass in a filehandle open in 'rU' mode (or at least 'r')"""
@@ -21,27 +19,39 @@ class VCFReader(object):
     self._header = ""
     self._sample_names = []
 
-  def new(self):
-
-    line_num = 0
-    self._sample_names = []
-    for line in self._filehandle:
-      line_num+=1
+    self._line_num = 0
+    while self._in_header:
+      line = self._filehandle.next()
+      self._line_num+=1
       line = line.rstrip('\r\n')
 
-      if self._in_header:
-        if line[0] == '#':
-          self._header += line+'\n'
-          if line[0:6].upper() == '#CHROM':
-            self._sample_names = line.split('\t')[9:]
-          continue
-        else:
-          if self._sample_names:
-            self._in_header = False
-          else:
-            raise FormatException("Invalid VCF: failed on line "+str(line_num))
+      if line[0] == '#':
+        self._header += line+'\n'
+        if line[0:6].upper() == '#CHROM':
+          self._sample_names = line.split('\t')[9:]
+          self._in_header = False
+      else:
+        raise FormatException("Invalid VCF: invalid header (line "
+          +self._line_num+")")
 
-      yield VCFPosition(line, line_num=line_num)
+
+  def next(self):
+
+    line = ""
+    # allow empty lines
+    while not line:
+      line = self._filehandle.next()
+      self._line_num+=1
+      line = line.rstrip('\r\n')
+
+    if self._in_header or line[0] == '#':
+      raise FormatException("Invalid VCF: late header at line "+self._line_num)
+    
+    return VCFPosition(line, self)
+
+
+  def get_line_num(self):
+    return self._line_num
 
   def get_header(self):
     return self._header
@@ -59,34 +69,18 @@ class VCFReader(object):
 
 class VCFPosition(object):
 
-  def __init__(self, line, line_num=None):
-    if line_num:
-      self._line_num = str(line_num)
+  def __init__(self, line, reader):
+    if reader.get_line_num():
+      self._line_num = str(reader.get_line_num())
     else:
       self._line_num = "[NO NUMBER]"
 
-    columns = line.split('\t')
-    if len(columns) < 10:
+    self._columns = line.split('\t')
+    if len(self._columns) < 10:
       raise FormatException("Invalid VCF: too few columns in line "
         +self._line_num)
 
-    self._chrom  = columns[0]
-    try:
-      self._pos  = int(columns[1])
-    except ValueError:
-      raise FormatException("Invalid VCF: non-integer POS in line "
-        +self._line_num)
-    self._id = columns[2]
-    self._ref = columns[3]
-    if columns[4] == '.':
-      self._alt = []
-    else:
-      self._alt = columns[4].split(',')
-    self._qual = columns[5]
-    self._filter = columns[6]
-    self._info = self._parse_info(columns[7])
-    self._genotypes = self._parse_genotypes(columns[8], columns[9:])
-
+    self._reader = reader
 
   def _parse_info(self, info_string):
     info = {}
@@ -103,28 +97,28 @@ class VCFPosition(object):
 
 
   def _parse_genotypes(self, format, samples):
-    genotypes = []
+    genotypes = {}
     format_strings = format.split(':')
     
-    for sample in samples:
+    for (sample, sample_name) in zip(samples, self._reader.get_sample_names()):
       sample_strings = sample.split(':')
       if len(format_strings) != len(sample_strings):
         raise FormatException("Invalid VCF: FORMAT does not match SAMPLE "
           +"in line "+self._line_num)
       genotype = dict(zip(format_strings, sample_strings))
-      genotypes.append(genotype)
+      genotypes[sample_name] = genotype
 
     return genotypes
 
 
-  def get_varcounts(self):
-    varcounts = []
+  def _parse_varcounts(self, genotypes):
+    varcounts = {}
 
-    for genotype in self._genotypes:
+    for sample_name in genotypes:
       varcount = {}
 
       try:
-        varcount_strings = genotype['NC'].split(',')
+        varcount_strings = genotypes[sample_name]['NC'].split(',')
       except KeyError:
         raise FormatException("Invalid VCF: may not be Naive Variant Counter "
           "output (line "+self._line_num+")")
@@ -142,7 +136,7 @@ class VCFPosition(object):
           "output (line "+self._line_num+")")
         varcount[variant] = count
 
-      varcounts.append(varcount)
+      varcounts[sample_name] = varcount
 
     return varcounts
 
@@ -151,34 +145,57 @@ class VCFPosition(object):
     return self._line_num
 
   def get_chrom(self):
-    return self._chrom
+    if self._columns[0] == '.':
+      return None
+    else:
+      return self._columns[0]
 
   def get_pos(self):
-    return self._pos
+    try:
+      return int(self._columns[1])
+    except ValueError:
+      raise FormatException("Invalid VCF: non-integer POS in line "
+        +self._line_num)
 
   def get_id(self):
-    return self._id
+    if self._columns[2] == '.':
+      return None
+    else:
+      return self._columns[2]
 
   def get_ref(self):
-    return self._ref
+    if self._columns[3] == '.':
+      return None
+    else:
+      return self._columns[3]
 
   def get_alt(self):
-    return self._alt
+    if self._columns[4] == '.':
+      return []
+    else:
+      return self._columns[4].split(',')
 
   def get_qual(self):
-    return self._qual
+    if self._columns[5] == '.':
+      return None
+    else:
+      return self._columns[5]
 
   def get_filter(self):
-    return self._filter
+    if self._columns[6] == '.':
+      return None
+    else:
+      return self._columns[6]
 
   def get_info(self):
-    return self._info
-
-  def get_format(self):
-    return self._format
+    return self._parse_info(self._columns[7])
 
   def get_genotypes(self):
-    return self._genotypes
+    return self._parse_genotypes(self._columns[8], self._columns[9:])
+
+  def get_varcounts(self):
+    return self._parse_varcounts(self.get_genotypes())
+
 
   def set_alt(self, alt):
     if isinstance(alt, list):
@@ -193,6 +210,16 @@ class VCFPosition(object):
         if not isinstance(genotype, dict):
           return False
       self._genotypes = genotypes
+      return True
+    else:
+      return False
+
+  def set_varcounts(self, varcounts):
+    if isinstance(varcounts, list):
+      for varcount in varcounts:
+        if not isinstance(varcount, dict):
+          return False
+      self._varcounts = varcounts
       return True
     else:
       return False
@@ -217,6 +244,8 @@ class VCFPosition(object):
 # Then you'd call it like:
 #   for base in fasta_bases('chrM.fa'):
 #     print base
+#
+# TODO: check out https://pypi.python.org/pypi/pyfasta/
 class FastaBaseGenerator(object):
 
   def __init__(self, filepath):
