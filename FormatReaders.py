@@ -6,6 +6,7 @@ class FormatException(Exception):
       Exception.__init__(self, message)
 
 
+#TODO: cache attributes instead of re-generating in getter
 class VCFReader(object):
   """A simple VCF parser which can read Naive Variant Caller output."""
 
@@ -47,7 +48,7 @@ class VCFReader(object):
     if self._in_header or line[0] == '#':
       raise FormatException("Invalid VCF: late header at line "+self._line_num)
     
-    return VCFPosition(line, self)
+    return VCFSite(line, self)
 
 
   def get_line_num(self):
@@ -67,7 +68,7 @@ class VCFReader(object):
       return False
 
 
-class VCFPosition(object):
+class VCFSite(object):
 
   def __init__(self, line, reader):
     if reader.get_line_num():
@@ -111,7 +112,7 @@ class VCFPosition(object):
     return genotypes
 
 
-  def _parse_varcounts(self, genotypes):
+  def _parse_varcounts(self, genotypes, stranded=True):
     varcounts = {}
 
     for sample_name in genotypes:
@@ -120,7 +121,7 @@ class VCFPosition(object):
       try:
         varcount_strings = genotypes[sample_name]['NC'].split(',')
       except KeyError:
-        raise FormatException("Invalid VCF: may not be Naive Variant Counter "
+        raise FormatException("Invalid VCF: may not be Naive Variant Caller "
           "output (line "+self._line_num+")")
       
       for varcount_string in varcount_strings:
@@ -132,13 +133,28 @@ class VCFPosition(object):
           variant = vcfields[0]
           count = int(vcfields[1])
         except (IndexError, ValueError):
-          raise FormatException("Invalid VCF: may not be Naive Variant Counter "
+          raise FormatException("Invalid VCF: may not be Naive Variant Caller "
           "output (line "+self._line_num+")")
-        varcount[variant] = count
+        if not stranded:
+          variant = variant.lstrip('+-')
+        varcount[variant] = count + varcount.get(variant, 0)
 
       varcounts[sample_name] = varcount
 
     return varcounts
+
+
+  def _sum_coverages(self, varcounts):
+    coverages = {}
+
+    for sample_name in varcounts:
+      total = 0
+      varcount = varcounts[sample_name]
+      for variant in varcount:
+        total += varcount[variant]
+      coverages[sample_name] = total
+
+    return coverages
 
 
   def get_line_num(self):
@@ -193,8 +209,11 @@ class VCFPosition(object):
   def get_genotypes(self):
     return self._parse_genotypes(self._columns[8], self._columns[9:])
 
-  def get_varcounts(self):
-    return self._parse_varcounts(self.get_genotypes())
+  def get_varcounts(self, stranded=True):
+    return self._parse_varcounts(self.get_genotypes(), stranded=stranded)
+
+  def get_coverages(self):
+    return self._sum_coverages(self.get_varcounts())
 
 
   def set_alt(self, alt):
