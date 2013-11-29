@@ -71,17 +71,26 @@ class VCFReader(object):
 class VCFSite(object):
 
   def __init__(self, line, reader):
-    if reader.get_line_num():
-      self._line_num = str(reader.get_line_num())
-    else:
-      self._line_num = "[NO NUMBER]"
+    self._reader = reader
+    self._line_num = self._reader.get_line_num()
 
     self._columns = line.split('\t')
     if len(self._columns) < 10:
       raise FormatException("Invalid VCF: too few columns in line "
         +self._line_num)
 
-    self._reader = reader
+    self._chrom = None
+    self._pos = None
+    self._id = None
+    self._ref = None
+    self._alt = None
+    self._qual = None
+    self._filter = None
+    self._info = None
+    self._genotypes = None
+    self._varcounts = None
+    self._coverages = None
+
 
   def _parse_info(self, info_string):
     info = {}
@@ -158,62 +167,86 @@ class VCFSite(object):
 
 
   def get_line_num(self):
-    return self._line_num
+    return self._reader.get_line_num()
 
   def get_chrom(self):
-    if self._columns[0] == '.':
-      return None
-    else:
-      return self._columns[0]
+    if self._chrom is None:
+      if self._columns[0] == '.':
+        self._chrom = None
+      else:
+        self._chrom = self._columns[0]
+    return self._chrom
 
   def get_pos(self):
-    try:
-      return int(self._columns[1])
-    except ValueError:
-      raise FormatException("Invalid VCF: non-integer POS in line "
-        +self._line_num)
+    if self._pos is None:
+      try:
+        self._pos = int(self._columns[1])
+      except ValueError:
+        raise FormatException("Invalid VCF: non-integer POS in line "
+          +self._line_num)
+    return self._pos
 
   def get_id(self):
-    if self._columns[2] == '.':
-      return None
-    else:
-      return self._columns[2]
+    if self._id is None:
+      if self._columns[2] == '.':
+        self._id = None
+      else:
+        self._id = self._columns[2]
+    return self._id
 
   def get_ref(self):
-    if self._columns[3] == '.':
-      return None
-    else:
-      return self._columns[3]
+    if self._ref is None:
+      if self._columns[3] == '.':
+        self._ref = None
+      else:
+        self._ref = self._columns[3]
+    return self._ref
 
   def get_alt(self):
-    if self._columns[4] == '.':
-      return []
-    else:
-      return self._columns[4].split(',')
+    if self._alt is None:
+      if self._columns[4] == '.':
+        self._alt = []
+      else:
+        self._alt = self._columns[4].split(',')
+    return self._alt
 
   def get_qual(self):
-    if self._columns[5] == '.':
-      return None
-    else:
-      return self._columns[5]
+    if self._qual is None:
+      if self._columns[5] == '.':
+        self._qual = None
+      else:
+        self._qual = self._columns[5]
+    return self._qual
 
   def get_filter(self):
-    if self._columns[6] == '.':
-      return None
-    else:
-      return self._columns[6]
+    if self._filter is None:
+      if self._columns[6] == '.':
+        self._filter = None
+      else:
+        self._filter = self._columns[6].split(';')
+    return self._filter
 
   def get_info(self):
-    return self._parse_info(self._columns[7])
+    if self._info is None:
+      self._info = self._parse_info(self._columns[7])
+    return self._info
 
   def get_genotypes(self):
-    return self._parse_genotypes(self._columns[8], self._columns[9:])
+    if self._genotypes is None:
+      self._genotypes = self._parse_genotypes(self._columns[8],
+        self._columns[9:])
+    return self._genotypes
 
   def get_varcounts(self, stranded=True):
-    return self._parse_varcounts(self.get_genotypes(), stranded=stranded)
+    if self._varcounts is None:
+      self._varcounts = self._parse_varcounts(self.get_genotypes(),
+        stranded=stranded)
+    return self._varcounts
 
   def get_coverages(self):
-    return self._sum_coverages(self.get_varcounts())
+    if self._coverages is None:
+      self._coverages = self._sum_coverages(self.get_varcounts())
+    return self._coverages
 
 
   def set_alt(self, alt):
@@ -244,27 +277,7 @@ class VCFSite(object):
       return False
 
 
-# TODO: Add a generator that reads an arbitrary number of characters at a time.
-# Detect end of record with
-#   header = seq.index('>')
-#   if seq[header-1] == '\n':
-#     break
-#   elif header == 0 and lastchar = '\n':
-#     break
-# And then remove newlines with seq.replace('\n', '')
-#
-# TODO: Turn class into just a function
-# See if this works:
-#   def fasta_bases(filepath, which_seq=None, restart=True):
-#     if restart:
-#       filehhandle = open(filepath, 'rU')
-#       reading = False
-#       restart = False
-# Then you'd call it like:
-#   for base in fasta_bases('chrM.fa'):
-#     print base
-#
-# TODO: check out https://pypi.python.org/pypi/pyfasta/
+# TODO: see 0notes.txt
 class FastaBaseGenerator(object):
 
   def __init__(self, filepath):
