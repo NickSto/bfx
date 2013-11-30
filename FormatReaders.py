@@ -6,7 +6,6 @@ class FormatException(Exception):
       Exception.__init__(self, message)
 
 
-#TODO: cache attributes instead of re-generating in getter
 class VCFReader(object):
   """A simple VCF parser which can read Naive Variant Caller output."""
 
@@ -88,7 +87,8 @@ class VCFSite(object):
     self._filter = None
     self._info = None
     self._genotypes = None
-    self._varcounts = None
+    self._varcounts_stranded = None
+    self._varcounts_unstranded = None
     self._coverages = None
 
 
@@ -215,13 +215,21 @@ class VCFSite(object):
       if self._columns[5] == '.':
         self._qual = None
       else:
-        self._qual = self._columns[5]
+        try:
+          self._qual = int(self._columns[5])
+        except ValueError:
+          self._qual = float(self._columns[5])
+        except ValueError:
+          raise FormatException("Invalid VCF: non-numeric QUAL in line "
+            +self._line_num)
     return self._qual
 
   def get_filter(self):
     if self._filter is None:
       if self._columns[6] == '.':
         self._filter = None
+      elif self._columns[6].upper() == 'PASS':
+        self._filter = True
       else:
         self._filter = self._columns[6].split(';')
     return self._filter
@@ -238,10 +246,16 @@ class VCFSite(object):
     return self._genotypes
 
   def get_varcounts(self, stranded=True):
-    if self._varcounts is None:
-      self._varcounts = self._parse_varcounts(self.get_genotypes(),
-        stranded=stranded)
-    return self._varcounts
+    if stranded:
+      if self._varcounts_stranded is None:
+        self._varcounts_stranded = self._parse_varcounts(self.get_genotypes(),
+          stranded=True)
+      return self._varcounts_stranded
+    else:
+      if self._varcounts_unstranded is None:
+        self._varcounts_unstranded = self._parse_varcounts(self.get_genotypes(),
+          stranded=False)
+      return self._varcounts_unstranded
 
   def get_coverages(self):
     if self._coverages is None:
