@@ -34,7 +34,7 @@ class VCFReader(object):
           self._in_header = False
       else:
         raise FormatError("Invalid VCF: invalid header (line "
-          +self._line_num+")")
+          +str(self._line_num)+")")
 
 
   def next(self):
@@ -47,7 +47,8 @@ class VCFReader(object):
       line = line.rstrip('\r\n')
 
     if self._in_header or line[0] == '#':
-      raise FormatError("Invalid VCF: late header at line "+self._line_num)
+      raise FormatError("Invalid VCF: late header at line "
+        +str(self._line_num))
     
     return VCFSite(line, self)
 
@@ -350,12 +351,11 @@ class VCFSite(object):
     info = OrderedDict()
 
     for keyvalue in info_string.split(';'):
-      try:
+      if '=' in keyvalue:
         (key, value) = keyvalue.split('=')
-      except ValueError:
-        raise FormatError("Invalid VCF: bad INFO field in line "
-          +self._line_num)
-      info[key] = value.split(',')
+        info[key] = value.split(',')
+      else:
+        info[keyvalue] = True
 
     return info
 
