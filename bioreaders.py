@@ -50,7 +50,11 @@ class VCFReader(object):
       raise FormatError("Invalid VCF: late header at line "
         +str(self._line_num))
     
-    return VCFSite(line, self)
+    site = VCFSite()
+    site.parse_line(line)
+    site.set_line_num(self._line_num)
+    site.set_sample_names(self._sample_names)
+    return site
 
 
   def get_line_num(self):
@@ -72,14 +76,14 @@ class VCFReader(object):
 
 class VCFSite(object):
 
-  def __init__(self, line, reader):
-    self._reader = reader
-    self._line_num = self._reader.get_line_num()
-
-    self._columns = line.split('\t')
-    if len(self._columns) < 10:
-      raise FormatError("Invalid VCF: too few columns in line "+self._line_num)
-
+  def __init__(self):
+    # internal use
+    self._initialized = False
+    self._sample_names = None
+    self._line_num = '[N/A]'
+    self._modified = [False] * 10
+    # data
+    self._columns = None
     self._chrom = None
     self._pos = None
     self._id = None
@@ -94,14 +98,17 @@ class VCFSite(object):
     self._variants_stranded = None
     self._variants_unstranded = None
     self._coverages = None
-    self._modified = [False] * 10
 
 
-  def get_line_num(self):
-    return self._reader.get_line_num()
+  def parse_line(self, line):
+    self._columns = line.split('\t')
+    if len(self._columns) < 10:
+      raise FormatError("Invalid VCF: too few columns in line "+self._line_num)
+    self._initialized = True
+
 
   def get_chrom(self):
-    if self._chrom is None:
+    if self._chrom is None and self._initialized:
       if self._columns[0] == '.':
         self._chrom = None
       else:
@@ -109,7 +116,7 @@ class VCFSite(object):
     return self._chrom
 
   def get_pos(self):
-    if self._pos is None:
+    if self._pos is None and self._initialized:
       try:
         self._pos = int(self._columns[1])
       except ValueError:
@@ -118,7 +125,7 @@ class VCFSite(object):
     return self._pos
 
   def get_id(self):
-    if self._id is None:
+    if self._id is None and self._initialized:
       if self._columns[2] == '.':
         self._id = None
       else:
@@ -126,7 +133,7 @@ class VCFSite(object):
     return self._id
 
   def get_ref(self):
-    if self._ref is None:
+    if self._ref is None and self._initialized:
       if self._columns[3] == '.':
         self._ref = None
       else:
@@ -134,7 +141,7 @@ class VCFSite(object):
     return self._ref
 
   def get_alt(self):
-    if self._alt is None:
+    if self._alt is None and self._initialized:
       if self._columns[4] == '.':
         self._alt = []
       else:
@@ -142,7 +149,7 @@ class VCFSite(object):
     return self._alt
 
   def get_qual(self):
-    if self._qual is None:
+    if self._qual is None and self._initialized:
       if self._columns[5] == '.':
         self._qual = None
       else:
@@ -156,7 +163,7 @@ class VCFSite(object):
     return self._qual
 
   def get_filter(self):
-    if self._filter is None:
+    if self._filter is None and self._initialized:
       if self._columns[6] == '.':
         self._filter = None
       elif self._columns[6].upper() == 'PASS':
@@ -166,44 +173,50 @@ class VCFSite(object):
     return self._filter
 
   def get_info(self):
-    if self._info is None:
+    if self._info is None and self._initialized:
       self._info = self._parse_info(self._columns[7])
     return self._info
 
   def get_genotypes(self):
-    if self._genotypes is None:
+    if self._genotypes is None and self._initialized:
       self._genotypes = self._parse_genotypes(self._columns[8],
         self._columns[9:])
     return self._genotypes
 
   def get_varcounts(self, stranded=False):
     if stranded:
-      if self._varcounts_stranded is None:
+      if self._varcounts_stranded is None and self._initialized:
         self._varcounts_stranded = self._parse_varcounts(self.get_genotypes(),
           stranded=True)
       return self._varcounts_stranded
     else:
-      if self._varcounts_unstranded is None:
+      if self._varcounts_unstranded is None and self._initialized:
         self._varcounts_unstranded = self._parse_varcounts(self.get_genotypes(),
           stranded=False)
       return self._varcounts_unstranded
 
   def get_variants(self, stranded=False):
     if stranded:
-      if self._variants_stranded is None:
+      if self._variants_stranded is None and self._initialized:
         self._variants_stranded = self._variants_list(self.get_varcounts(
           stranded=True))
       return self._variants_stranded
     else:
-      if self._variants_unstranded is None:
+      if self._variants_unstranded is None and self._initialized:
         self._variants_unstranded = self._variants_list(self.get_varcounts(
           stranded=False))
       return self._variants_unstranded
 
   def get_coverages(self):
-    if self._coverages is None:
+    if self._coverages is None and self._initialized:
       self._coverages = self._sum_coverages(self.get_varcounts())
     return self._coverages
+
+  def get_sample_names(self):
+    return self._sample_names
+
+  def get_line_num(self):
+    return self._line_num
 
 
   def set_chrom(self, chrom):
@@ -238,6 +251,8 @@ class VCFSite(object):
     else:
       return False
 
+  #TODO: Alter the NVC data in the INFO and genotypes to be consistent with new
+  #  list of ALTs
   def set_alt(self, alt):
     if isinstance(alt, list) or alt is None:
       self._alt = alt
@@ -284,6 +299,39 @@ class VCFSite(object):
   #TODO: implement (remember to roll varcounts changes into genotypes)
   # def set_varcounts(self, varcounts):
 
+  def set_sample_names(self, sample_names):
+    if isinstance(sample_names, list):
+      self._sample_names = sample_names
+      return True
+    else:
+      return False
+
+  def set_line_num(self, line_num):
+    self._line_num = str(line_num)
+    return True
+
+
+  def variant_to_alt(self, variant):
+    variant = variant.lstrip('+-')
+    ref = self.get_ref()
+    ref_tail = ref[1:]
+    if variant[0] == 'd':
+      try:
+        delength = int(variant[1:])
+      except ValueError:
+        raise FormatError("Invalid variant string")
+      return ref[0]+ref_tail[delength:]
+    else:
+      return variant+ref_tail
+
+
+  def split():
+    """Split a multi-sample VCFSite into multiple VCFSites, one per sample."""
+
+    sites = []
+    for sample_name in self._sample_names:
+      sites.append(sample_name)
+
 
   def __str__(self):
     """Returns a VCF line with the site's current data (no newline)"""
@@ -297,7 +345,7 @@ class VCFSite(object):
     line.append(self.get_ref())
     line.append(','.join(self.get_alt()))
     line.append(self.get_qual())
-    # FILTER
+    # FILTER column
     if self._modified[6]:
       filter = self.get_filter()
       if filter is True:
@@ -306,7 +354,7 @@ class VCFSite(object):
         line.append(';'.join([str(val) for val in filter]))
     else:
       line.append(self._columns[6])
-    # INFO
+    # INFO column
     if self._modified[7]:
       info = self.get_info()
       fields = []
@@ -333,20 +381,6 @@ class VCFSite(object):
     return '\t'.join([str(field) for field in line])
 
 
-  def variant_to_alt(self, variant):
-    variant = variant.lstrip('+-')
-    ref = self.get_ref()
-    ref_tail = ref[1:]
-    if variant[0] == 'd':
-      try:
-        delength = int(variant[1:])
-      except ValueError:
-        raise FormatError("Invalid variant string")
-      return ref[0]+ref_tail[delength:]
-    else:
-      return variant+ref_tail
-
-
   def _parse_info(self, info_string):
     info = OrderedDict()
 
@@ -364,7 +398,7 @@ class VCFSite(object):
     genotypes = OrderedDict()
     format_strings = format.split(':')
     
-    for (sample, sample_name) in zip(samples, self._reader.get_sample_names()):
+    for (sample, sample_name) in zip(samples, self._sample_names):
       sample_strings = sample.split(':')
       if len(format_strings) != len(sample_strings):
         raise FormatError("Invalid VCF: FORMAT does not match SAMPLE in line "
