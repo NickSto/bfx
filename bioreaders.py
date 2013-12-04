@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # requires Python 2.7
-__version__ = '607bf41'
+__version__ = '6eb41da'
 from collections import OrderedDict
 import copy
 
@@ -20,7 +20,8 @@ class VCFReader(object):
     """Pass in a filehandle open in 'rU' mode (or at least 'r')"""
     self._filehandle = filehandle
     self._in_header = True
-    self._header = ""
+    self._meta_header = ""
+    self._column_header = ""
     self._sample_names = []
 
     self._line_num = 0
@@ -30,8 +31,10 @@ class VCFReader(object):
       line = line.rstrip('\r\n')
 
       if line[0] == '#':
-        self._header += line+'\n'
-        if line[0:6].upper() == '#CHROM':
+        if line[1] == '#':
+          self._meta_header += line+'\n'
+        elif line[0:6].upper() == '#CHROM':
+          self._column_header += line+'\n'
           self._sample_names = line.split('\t')[9:]
           self._in_header = False
       else:
@@ -62,8 +65,14 @@ class VCFReader(object):
   def get_line_num(self):
     return self._line_num
 
+  def get_meta_header(self):
+    return self._meta_header
+
+  def get_column_header(self):
+    return self._column_header
+
   def get_header(self):
-    return self._header
+    return self._meta_header + self._column_header
 
   def get_sample_names(self):
     return self._sample_names
