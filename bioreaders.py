@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # requires Python 2.7
+__version__ = '607bf41'
 from collections import OrderedDict
+import copy
 
 class FormatError(Exception):
   def __init__(self, message=None):
@@ -74,6 +76,9 @@ class VCFReader(object):
       return False
 
 
+#TODO: Separate systems for saying an attribute is not initialized and that its
+#      value in the file is null
+#TODO: Replace getters, setters with property decorators
 class VCFSite(object):
 
   def __init__(self):
@@ -81,7 +86,7 @@ class VCFSite(object):
     self._initialized = False
     self._sample_names = None
     self._line_num = '[N/A]'
-    self._modified = [False] * 10
+    self._modified = [True] * 10
     # data
     self._columns = None
     self._chrom = None
@@ -105,18 +110,20 @@ class VCFSite(object):
     if len(self._columns) < 10:
       raise FormatError("Invalid VCF: too few columns in line "+self._line_num)
     self._initialized = True
+    self._modified = [False] * 10
 
-
+  # Attributes are unset until asked for
   def get_chrom(self):
     if self._chrom is None and self._initialized:
       if self._columns[0] == '.':
-        self._chrom = None
-      else:
-        self._chrom = self._columns[0]
+        raise FormatError("Invalid VCF: no CHROM in line "+self._line_num)
+      self._chrom = self._columns[0]
     return self._chrom
 
   def get_pos(self):
     if self._pos is None and self._initialized:
+      if self._columns[1] == '.':
+        raise FormatError("Invalid VCF: no POS in line "+self._line_num)
       try:
         self._pos = int(self._columns[1])
       except ValueError:
@@ -127,7 +134,7 @@ class VCFSite(object):
   def get_id(self):
     if self._id is None and self._initialized:
       if self._columns[2] == '.':
-        self._id = None
+        self._id = ''
       else:
         self._id = self._columns[2]
     return self._id
@@ -135,9 +142,8 @@ class VCFSite(object):
   def get_ref(self):
     if self._ref is None and self._initialized:
       if self._columns[3] == '.':
-        self._ref = None
-      else:
-        self._ref = self._columns[3]
+        raise FormatError("Invalid VCF: no REF in line "+self._line_num)
+      self._ref = self._columns[3]
     return self._ref
 
   def get_alt(self):
@@ -151,7 +157,7 @@ class VCFSite(object):
   def get_qual(self):
     if self._qual is None and self._initialized:
       if self._columns[5] == '.':
-        self._qual = None
+        self._qual = ''
       else:
         try:
           self._qual = int(self._columns[5])
@@ -165,7 +171,7 @@ class VCFSite(object):
   def get_filter(self):
     if self._filter is None and self._initialized:
       if self._columns[6] == '.':
-        self._filter = None
+        self._filter = []
       elif self._columns[6].upper() == 'PASS':
         self._filter = True
       else:
@@ -223,6 +229,7 @@ class VCFSite(object):
     if isinstance(chrom, basestring) or chrom is None:
       self._chrom = chrom
       self._modified[0] = True
+      self._set_initialized()
       return True
     else:
       return False
@@ -231,6 +238,7 @@ class VCFSite(object):
     if isinstance(pos, int):
       self._pos = pos
       self._modified[1] = True
+      self._set_initialized()
       return True
     else:
       return False
@@ -239,6 +247,7 @@ class VCFSite(object):
     if isinstance(id, basestring) or id is None:
       self._id = id
       self._modified[2] = True
+      self._set_initialized()
       return True
     else:
       return False
@@ -247,24 +256,27 @@ class VCFSite(object):
     if isinstance(ref, basestring) or ref is None:
       self._ref = ref
       self._modified[3] = True
+      self._set_initialized()
       return True
     else:
       return False
 
   #TODO: Alter the NVC data in the INFO and genotypes to be consistent with new
-  #  list of ALTs
+  #      list of ALTs
   def set_alt(self, alt):
     if isinstance(alt, list) or alt is None:
       self._alt = alt
       self._modified[4] = True
+      self._set_initialized()
       return True
     else:
       return False
 
   def set_qual(self, qual):
-    if isinstance(qual, (int, long, float)) or qual is None:
+    if isinstance(qual, (int, long, float)) or qual == '':
       self._qual = qual
       self._modified[5] = True
+      self._set_initialized()
       return True
     else:
       return False
@@ -273,6 +285,7 @@ class VCFSite(object):
     if isinstance(filter, list) or filter is None or filter is True:
       self._filter = filter
       self._modified[6] = True
+      self._set_initialized()
       return True
     else:
       return False
@@ -281,6 +294,7 @@ class VCFSite(object):
     if isinstance(info, dict) or info is None:
       self._info = info
       self._modified[7] = True
+      self._set_initialized()
       return True
     else:
       return False
@@ -292,6 +306,7 @@ class VCFSite(object):
           return False
       self._genotypes = genotypes
       self._modified[8] = True
+      self._set_initialized()
       return True
     else:
       return False
@@ -325,12 +340,25 @@ class VCFSite(object):
       return variant+ref_tail
 
 
-  def split():
+  def split(self):
     """Split a multi-sample VCFSite into multiple VCFSites, one per sample."""
 
     sites = []
+    genotypes = copy.deepcopy(self.get_genotypes())
     for sample_name in self._sample_names:
-      sites.append(sample_name)
+      site = VCFSite()
+      site.set_chrom(self.get_chrom())
+      site.set_pos(self.get_pos())
+      site.set_id(self.get_id())
+      site.set_ref(self.get_ref())
+      site.set_alt(copy.deepcopy(self.get_alt()))
+      site.set_qual(self.get_qual())
+      site.set_filter(copy.deepcopy(self.get_filter()))
+      site.set_info(copy.deepcopy(self.get_info()))
+      site.set_genotypes({sample_name:genotypes[sample_name]})
+      sites.append(site)
+
+    return sites
 
 
   def __str__(self):
@@ -379,6 +407,27 @@ class VCFSite(object):
       if line[i] is None:
         line[i] = '.'
     return '\t'.join([str(field) for field in line])
+
+
+  def _set_initialized(self):
+    has_line = bool(
+      self._columns is not None and
+      isinstance(self._columns, list) and
+      len(self._columns) >= 10
+    )
+    fields_full = bool(
+      self._chrom is not None and
+      self._pos is not None and
+      self._id is not None and
+      self._ref is not None and
+      self._alt is not None and
+      self._qual is not None and
+      self._filter is not None and
+      self._info is not None and
+      self._genotypes is not None
+    )
+    self._initialized = has_line or fields_full
+    return self._initialized
 
 
   def _parse_info(self, info_string):
