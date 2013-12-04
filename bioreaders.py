@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # requires Python 2.7
-__version__ = '6eb41da'
+__version__ = '1b4a6d0'
 from collections import OrderedDict
 import copy
 
@@ -378,10 +378,10 @@ class VCFSite(object):
     line = []
     line.append(self.get_chrom())
     line.append(self.get_pos())
-    line.append(self.get_id())
+    line.append(self.get_id() if self.get_id() else '.')
     line.append(self.get_ref())
-    line.append(','.join(self.get_alt()))
-    line.append(self.get_qual())
+    line.append(','.join(self.get_alt()) if self.get_alt() else '.')
+    line.append(self.get_qual() if self.get_qual() else '.')
     # FILTER column
     if self._modified[6]:
       filter = self.get_filter()
