@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # requires Python 2.7
-__version__ = '1b4a6d0'
+__version__ = 'fb87182'
 from collections import OrderedDict
 import copy
 
@@ -26,7 +26,10 @@ class VCFReader(object):
 
     self._line_num = 0
     while self._in_header:
-      line = self._filehandle.next()
+      try:
+        line = self._filehandle.next()
+      except StopIteration:
+        raise FormatError("Invalid VCF: No content")
       self._line_num+=1
       line = line.rstrip('\r\n')
 
@@ -349,6 +352,18 @@ class VCFSite(object):
       return variant+ref_tail
 
 
+  def alt_to_variant(self, alt):
+    ref = self.get_ref()
+    diff = len(alt) - len(ref)
+    if diff < 0:    # deletion
+      return 'd'+str(-diff)
+    elif diff > 0:  # insertion
+      return alt[:diff+1]
+    else:           # SNV
+      return alt[0]
+    #TODO: support for complex substitutions? (e.g. ref "GAT", alt "CCG")
+
+
   def split(self):
     """Split a multi-sample VCFSite into multiple VCFSites, one per sample."""
 
@@ -425,6 +440,7 @@ class VCFSite(object):
       len(self._columns) >= 10
     )
     fields_full = bool(
+      self._sample_names is not None and
       self._chrom is not None and
       self._pos is not None and
       self._id is not None and
