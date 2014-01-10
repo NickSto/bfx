@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # requires Python 2.7
-__version__ = 'fb87182'
+__version__ = 'c0c4122'
 from collections import OrderedDict
 import copy
 
@@ -8,6 +8,121 @@ class FormatError(Exception):
   def __init__(self, message=None):
     if message:
       Exception.__init__(self, message)
+
+
+
+
+class LAVReader(object):
+  # Format assumptions:
+  # This was written only to parse the output of LASTZ version 1.02.00.
+  # Stanza starts and ends are on their own lines
+  # - E.g. there will be nothing (except whitespace) before or after "a {" on
+  #   the line in which it appears. The same goes for "}".
+  # Stanza labels are single alphabetic characters
+  # Sequence file names do not contain whitespace
+  # h stanzas are present
+  # s stanzas:
+  # - rev_comp_flag's are given
+
+  def __init__(self, filepath):
+    self.hits = []
+    
+    stanza = ''
+    stanza_done = True
+    stanza_line = 0
+    line_num = 0
+    current_hit = {}
+    with open(filepath, 'rU') as filehandle:
+      for raw_line in filehandle:
+        line = raw_line.strip()
+        line_num+=1
+        if not line:
+          continue
+        # at start of another stanza?
+        if stanza_done:
+          stanza = self._stanza_start(line)
+          if stanza:
+            stanza_done = False
+            stanza_line = 0
+          continue
+        # at end of a stanza?
+        if line == '}':
+          # if end of last stanza, add current hit to the list, start a new one
+          if stanza == 'a':
+            self.hits.append(current_hit)
+            current_hit = {}
+          stanza_done = True
+          stanza = ''
+          continue
+        # parse the stanzas
+        stanza_line+=1
+        if stanza == 's':
+          # file names, input sequence info (revcomp, etc)
+          try:
+            current_hit = self._parse_s(line, current_hit, stanza_line)
+          except FormatError as fe:
+            fe.args = (fe.args[0]+' (line '+str(line_num))+')',)
+            raise fe
+        if stanza == 'h':
+          # sequence names
+          current_hit = self._parse_h(line, current_hit, stanza_line)
+
+
+  def _stanza_start(self, line, stanza_line):
+    """Detect if this line begins a stanza. If so, return the type (a single
+    letter). If not, return None. The line should already be stripped."""
+    fields = line.split()
+    if len(fields) == 2 and fields[1] == '{':
+      # stanza label is a single alphabetic character?
+      if len(fields[0]) == 1 and 97 <= ord(fields[0].lower()) <= 122:
+        return fields[0]
+
+
+  def _parse_s(self, line, current_hit):
+    fields = line.split()
+    if len(fields) < 5:
+      raise FormatError('Invalid LAV: LAV file must include all 5 fields '
+        +'in s stanzas.')
+    try:
+      filename = fields[0].strip('"')
+      start = int(fields[1])
+      end = int(fields[2])
+      revcomp = fields[3] == '1'
+      seqnum = int(fields[4])
+    except ValueError:
+      raise FormatError('Invalid LAV: Problem in s stanza: either a file'
+        +'name with a space, or a non-integer coordinate.')
+    if stanza_line == 1:
+      seq = 'subj_'
+    elif stanza_line == 2:
+      seq = 'quer_'
+    else:
+      return current_hit
+    current_hit[seq+'filename'] = filename
+    current_hit[seq+'start']    = start
+    current_hit[seq+'end']      = end
+    current_hit[seq+'revcomp']  = revcomp
+    current_hit[seq+'seqnum']   = seqnum
+    return current_hit
+
+
+  def _parse_h(line, current_hit, stanza_line):
+    name = line.strip('"')
+    if name[0] == '>':
+      name = name[1:]
+    fields = name.split()
+    if fields:
+      identifier = fields[0]
+    else:
+      identifier = ''
+    if stanza_line == 1:
+      current_hit['subj_id'] = identifier
+      current_hit['subj_name'] = name
+    elif stanza_line == 2:
+      current_hit['quer_id'] = identifier
+      current_hit['quer_name'] = name
+    return current_hit
+
 
 
 class VCFReader(object):
@@ -353,6 +468,7 @@ class VCFSite(object):
 
 
   def alt_to_variant(self, alt):
+    # N.B.: the reference allele is handled by the SNV logic
     ref = self.get_ref()
     diff = len(alt) - len(ref)
     if diff < 0:    # deletion
