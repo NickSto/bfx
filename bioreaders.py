@@ -31,7 +31,7 @@ class LAVReader(object):
     stanza_done = True
     stanza_line = 0
     line_num = 0
-    current_hit = {}
+    current_hit = LAVHit()
     with open(filepath, 'rU') as filehandle:
       for raw_line in filehandle:
         line = raw_line.strip()
@@ -50,7 +50,7 @@ class LAVReader(object):
           # if end of last stanza, add current hit to the list, start a new one
           if stanza == 'a':
             self.hits.append(current_hit)
-            current_hit = {}
+            current_hit = LAVHit()
           stanza_done = True
           stanza = ''
           continue
@@ -61,14 +61,14 @@ class LAVReader(object):
           try:
             current_hit = self._parse_s(line, current_hit, stanza_line)
           except FormatError as fe:
-            fe.args = (fe.args[0]+' (line '+str(line_num))+')',)
+            fe.args = (fe.args[0]+' (line '+str(line_num)+')',)
             raise fe
         if stanza == 'h':
           # sequence names
           current_hit = self._parse_h(line, current_hit, stanza_line)
 
 
-  def _stanza_start(self, line, stanza_line):
+  def _stanza_start(self, line):
     """Detect if this line begins a stanza. If so, return the type (a single
     letter). If not, return None. The line should already be stripped."""
     fields = line.split()
@@ -78,7 +78,7 @@ class LAVReader(object):
         return fields[0]
 
 
-  def _parse_s(self, line, current_hit):
+  def _parse_s(self, line, current_hit, stanza_line):
     fields = line.split()
     if len(fields) < 5:
       raise FormatError('Invalid LAV: LAV file must include all 5 fields '
@@ -93,20 +93,21 @@ class LAVReader(object):
       raise FormatError('Invalid LAV: Problem in s stanza: either a file'
         +'name with a space, or a non-integer coordinate.')
     if stanza_line == 1:
-      seq = 'subj_'
+      current_hit.subject['filename'] = filename
+      current_hit.subject['start']    = start
+      current_hit.subject['end']      = end
+      current_hit.subject['revcomp']  = revcomp
+      current_hit.subject['seqnum']   = seqnum
     elif stanza_line == 2:
-      seq = 'quer_'
-    else:
-      return current_hit
-    current_hit[seq+'filename'] = filename
-    current_hit[seq+'start']    = start
-    current_hit[seq+'end']      = end
-    current_hit[seq+'revcomp']  = revcomp
-    current_hit[seq+'seqnum']   = seqnum
+      current_hit.query['filename'] = filename
+      current_hit.query['start']    = start
+      current_hit.query['end']      = end
+      current_hit.query['revcomp']  = revcomp
+      current_hit.query['seqnum']   = seqnum
     return current_hit
 
 
-  def _parse_h(line, current_hit, stanza_line):
+  def _parse_h(self, line, current_hit, stanza_line):
     name = line.strip('"')
     if name[0] == '>':
       name = name[1:]
@@ -116,12 +117,25 @@ class LAVReader(object):
     else:
       identifier = ''
     if stanza_line == 1:
-      current_hit['subj_id'] = identifier
-      current_hit['subj_name'] = name
+      current_hit.subject['id'] = identifier
+      current_hit.subject['name'] = name
     elif stanza_line == 2:
-      current_hit['quer_id'] = identifier
-      current_hit['quer_name'] = name
+      current_hit.query['id'] = identifier
+      current_hit.query['name'] = name
     return current_hit
+
+
+  def _parse_a(self, line, current_hit, stanza_line):
+
+    return current_hit
+
+
+class LAVHit(object):
+
+  def __init__(self):
+    self.query = {}
+    self.subject = {}
+    self.alignments = []
 
 
 
