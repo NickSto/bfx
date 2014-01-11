@@ -12,7 +12,7 @@ class FormatError(Exception):
 
 
 
-class LAVReader(object):
+class LavReader(object):
   # Format assumptions:
   # This was written only to parse the output of LASTZ version 1.02.00.
   # Stanza starts and ends are on their own lines
@@ -31,7 +31,8 @@ class LAVReader(object):
     stanza_done = True
     stanza_line = 0
     line_num = 0
-    current_hit = LAVHit()
+    current_hit = LavHit()
+    current_alignment = LavAlignment()
     with open(filepath, 'rU') as filehandle:
       for raw_line in filehandle:
         line = raw_line.strip()
@@ -47,25 +48,42 @@ class LAVReader(object):
           continue
         # at end of a stanza?
         if line == '}':
-          # if end of last stanza, add current hit to the list, start a new one
-          if stanza == 'a':
-            self.hits.append(current_hit)
-            current_hit = LAVHit()
+          # if end of an alignment block, add it to the current hit
+          if stanza == 'a' and len(current_alignment) > 0:
+            current_hit.alignments.append(current_alignment)
+            current_alignment = LavAlignment()
           stanza_done = True
           stanza = ''
           continue
         # parse the stanzas
         stanza_line+=1
         if stanza == 's':
+          # add previous hit to the list, start a new one
+          if len(current_hit) > 0:
+            self.hits.append(current_hit)
+            current_hit = LavHit()
           # file names, input sequence info (revcomp, etc)
           try:
             current_hit = self._parse_s(line, current_hit, stanza_line)
           except FormatError as fe:
             fe.args = (fe.args[0]+' (line '+str(line_num)+')',)
             raise fe
-        if stanza == 'h':
+        elif stanza == 'h':
           # sequence names
           current_hit = self._parse_h(line, current_hit, stanza_line)
+        elif stanza == 'a':
+          try:
+            current_alignment = self._parse_a(line, current_alignment, stanza_line)
+          except FormatError as fe:
+            fe.args = (fe.args[0]+' (line '+str(line_num)+')',)
+            raise fe
+          except ValueError:
+            raise FormatError('Invalid LAV: Non-integer encountered in "a" '
+              +'stanza on line '+str(line_num)+'.')
+    if len(current_alignment) > 0:
+      current_hit.alignments.append(current_alignment)
+    if len(current_hit) > 0:
+      self.hits.append(current_hit)
 
 
   def _stanza_start(self, line):
@@ -82,25 +100,25 @@ class LAVReader(object):
     fields = line.split()
     if len(fields) < 5:
       raise FormatError('Invalid LAV: LAV file must include all 5 fields '
-        +'in s stanzas.')
+        +'in "s" stanzas.')
     try:
       filename = fields[0].strip('"')
-      start = int(fields[1])
+      begin = int(fields[1])
       end = int(fields[2])
       revcomp = fields[3] == '1'
       seqnum = int(fields[4])
     except ValueError:
-      raise FormatError('Invalid LAV: Problem in s stanza: either a file'
+      raise FormatError('Invalid LAV: Problem in "s" stanza: either a file'
         +'name with a space, or a non-integer coordinate.')
     if stanza_line == 1:
       current_hit.subject['filename'] = filename
-      current_hit.subject['start']    = start
+      current_hit.subject['begin']    = begin
       current_hit.subject['end']      = end
       current_hit.subject['revcomp']  = revcomp
       current_hit.subject['seqnum']   = seqnum
     elif stanza_line == 2:
       current_hit.query['filename'] = filename
-      current_hit.query['start']    = start
+      current_hit.query['begin']    = begin
       current_hit.query['end']      = end
       current_hit.query['revcomp']  = revcomp
       current_hit.query['seqnum']   = seqnum
@@ -125,17 +143,57 @@ class LAVReader(object):
     return current_hit
 
 
-  def _parse_a(self, line, current_hit, stanza_line):
+  def _parse_a(self, line, current_alignment, stanza_line):
+    fields = line.split()
+    if stanza_line == 1:
+      if not (len(fields) == 2 and fields[0] == 's'):
+        raise FormatError('Invalid LAV: Error in "s" line of "a" stanza.')
+      current_alignment.score = int(fields[1])
+    elif stanza_line == 2:
+      if not (len(fields) == 3 and fields[0] == 'b'):
+        raise FormatError('Invalid LAV: Error in "b" line of "a" stanza.')
+      current_alignment.subject['begin'] = int(fields[1])
+      current_alignment.query['begin']   = int(fields[2])
+    elif stanza_line == 3:
+      if not (len(fields) == 3 and fields[0] == 'e'):
+        raise FormatError('Invalid LAV: Error in "e" line of "a" stanza.')
+      current_alignment.subject['end'] = int(fields[1])
+      current_alignment.query['end']   = int(fields[2])
+    elif stanza_line >= 4:
+      if not (len(fields) == 6 and fields[0] == 'l'):
+        raise FormatError('Invalid LAV: Error in "l" line of "a" stanza.')
+      block = {}
+      block['subject_begin'] = int(fields[1])
+      block['query_begin']   = int(fields[2])
+      block['subject_end']   = int(fields[3])
+      block['query_end']     = int(fields[4])
+      block['identity']      = int(fields[5])
+      block['length']        = int(fields[3]) - int(fields[1]) + 1
+      current_alignment.blocks.append(block)
+    return current_alignment
 
-    return current_hit
 
-
-class LAVHit(object):
+class LavHit(object):
 
   def __init__(self):
     self.query = {}
     self.subject = {}
     self.alignments = []
+
+  def __len__(self):
+    return len(self.alignments)
+
+
+class LavAlignment(object):
+
+  def __init__(self):
+    self.score = None
+    self.query = {}
+    self.subject = {}
+    self.blocks = []
+
+  def __len__(self):
+    return len(self.blocks)
 
 
 
