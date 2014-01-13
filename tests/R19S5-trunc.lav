@@ -1,0 +1,32 @@
+#:lav
+d {
+  "lastz.v1.02.00 /home/me/bx/data/chrM-rCRS.fa orig/R19S5.fa --format=lav 
+     A    C    G    T
+    91 -114  -31 -123
+  -114  100 -125  -31
+   -31 -125  100 -114
+  -123  -31 -114   91
+  O = 400, E = 30, K = 3000, L = 3000, M = 0"
+}
+#:lav
+s {
+  "/home/me/bx/data/chrM-rCRS.fa" 1 16569 0 1
+  "orig/R19S5.fa-" 1 401 1 1
+}
+h {
+   ">chrM gi|251831106|ref|NC_012920.1| Homo sapiens mitochondrion, complete genome"
+   ">NODE_3_length_401_cov_0.806569_ID_1890988 (reverse complement)"
+}
+a {
+  s 22121
+  b 233 8
+  e 544 318
+  l 233 8 271 46 67
+  l 273 47 282 56 70
+  l 283 59 462 238 93
+  l 465 239 544 318 94
+}
+m {
+  n 0
+}
+#:eof

@@ -24,14 +24,20 @@ class LavReader(object):
     keys for subject and query:
     filename, id, name, seqnum, revcomp, begin, end 
   LavHit.alignments     A list of LavAlignments
-  LavAlignment.query    A dict containing the query start and end coordinates
-  LavAlignment.subject  A dict containing the subject start and end coordinates
+  LavAlignment.score    An int: the score of the hit
+  LavAlignment.subject  A dict containing the subject start and end coordinate
+  LavAlignment.query    A dict containing the query start and end coordinate
     keys for subject and query:
     begin, end
-  LavAlignment.score    An int: the score of the hit
-  LavAlignment.blocks   A list of dicts, one for each gap-free block in the hit
-    keys for blocks:
-    subject_end, subject_begin, query_begin, query_end, length, identity
+  LavAlignment.blocks   A list of LavBlocks, one for each gap-free block
+  LavBlock.identity     An int: the percent identity of the block
+  LavBlock.subject      A dict containing the subject start and end coordinate
+  LavBlock.query        A dict containing the query start and end coordinate
+    keys for subject and query:
+    begin, end
+  len(LavHit)           = number of alignments in LavHit.alignments
+  len(LavAlignment)     = number of blocks in LavAlignment.blocks
+  len(LavBlock)         = number of bases aligned in the block
   """
   # Format assumptions:
   # This was written only to parse the output of LASTZ version 1.02.00.
@@ -109,25 +115,38 @@ class LavReader(object):
 
   def convert(self):
     """Convert all coordinates to forward strand, 1-based, from the start.
+    Also reverses the order of alignments and blocks in hits with reverse-
+    complemented query sequences.
     There cannot be any reverse-complemented subject sequences, or this will
     raise a FormatError."""
     for hit in self.hits:
-      sstart = hit.subject['begin']
-      qstart = hit.query['begin']
-      qend = hit.query['end']
       if hit.subject['revcomp']:
         raise FormatError('Invalid LAV: Subject sequence '+hit.subject['name']
           +'cannot be reverse complemented.')
-      for aln in hit.alignments:
-        aln.subject['begin'] = aln.subject['begin'] + sstart - 1
-        aln.subject['end'] = aln.subject['end'] + sstart - 1
-        if hit.query['revcomp']:
-          begin_temp = aln.query['begin']
-          aln.query['begin'] = qend - aln.query['end'] + 1
-          aln.query['end'] = qend - begin_temp + 1
-        else:
-          aln.query['begin'] = aln.query['begin'] + qstart - 1
-          aln.query['end'] = aln.query['end'] + qstart - 1
+      for alignment in hit.alignments:
+        alignment = self._convert_segment(alignment, hit)
+        for block in alignment.blocks:
+          block = self._convert_segment(block, hit)
+
+
+  def _convert_segment(self, segment, hit):
+    """Convert any segment formatted like an LavAlignment or LavBlock.
+    Specifically, anything with "subject" and "query" attributes which are dicts
+    containing "begin" and "end" values. The "query" dict also must have a
+    "revcomp" value."""
+    subj_start = hit.subject['begin']
+    quer_start = hit.query['begin']
+    quer_end = hit.query['end']
+    segment.subject['begin'] = segment.subject['begin'] + subj_start - 1
+    segment.subject['end'] = segment.subject['end'] + subj_start - 1
+    if hit.query['revcomp']:
+      begin_temp = segment.query['begin']
+      segment.query['begin'] = quer_end - segment.query['end'] + 1
+      segment.query['end'] = quer_end - begin_temp + 1
+    else:
+      segment.query['begin'] = segment.query['begin'] + quer_start - 1
+      segment.query['end'] = segment.query['end'] + quer_start - 1
+    return segment
 
 
   def _stanza_start(self, line):
@@ -210,13 +229,12 @@ class LavReader(object):
     elif stanza_line >= 4:
       if not (len(fields) == 6 and fields[0] == 'l'):
         raise FormatError('Invalid LAV: Error in "l" line of "a" stanza.')
-      block = {}
-      block['subject_begin'] = int(fields[1])
-      block['query_begin']   = int(fields[2])
-      block['subject_end']   = int(fields[3])
-      block['query_end']     = int(fields[4])
-      block['identity']      = int(fields[5])
-      block['length']        = int(fields[3]) - int(fields[1]) + 1
+      block = LavBlock()
+      block.subject['begin'] = int(fields[1])
+      block.query['begin']   = int(fields[2])
+      block.subject['end']   = int(fields[3])
+      block.query['end']     = int(fields[4])
+      block.identity         = int(fields[5])
       current_alignment.blocks.append(block)
     return current_alignment
 
@@ -224,8 +242,8 @@ class LavReader(object):
 class LavHit(object):
 
   def __init__(self):
-    self.query = {}
     self.subject = {}
+    self.query = {}
     self.alignments = []
 
   def __len__(self):
@@ -236,12 +254,23 @@ class LavAlignment(object):
 
   def __init__(self):
     self.score = None
-    self.query = {}
     self.subject = {}
+    self.query = {}
     self.blocks = []
 
   def __len__(self):
     return len(self.blocks)
+
+
+class LavBlock(object):
+
+  def __init__(self):
+    self.identity = None
+    self.subject = {}
+    self.query = {}
+
+  def __len__(self):
+    return self.subject['end'] - self.subject['begin'] + 1
 
 
 
