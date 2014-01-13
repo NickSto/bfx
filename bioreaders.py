@@ -13,6 +13,26 @@ class FormatError(Exception):
 
 
 class LavReader(object):
+  """Parse an LAV file and provide an API for querying its fields.
+  By default, the data will be represented exactly as it appears in the file
+  (but with numbers as int types). To convert coordinates to a more intuitive
+  system, call the convert() method.
+    Data structures:
+  LavReader.hits        A list of LavHits
+  LavHit.subject        A dict containing data on the hit's subject sequence
+  LavHit.query          A dict containing data on the hit's query sequence
+    keys for subject and query:
+    filename, id, name, seqnum, revcomp, begin, end 
+  LavHit.alignments     A list of LavAlignments
+  LavAlignment.query    A dict containing the query start and end coordinates
+  LavAlignment.subject  A dict containing the subject start and end coordinates
+    keys for subject and query:
+    begin, end
+  LavAlignment.score    An int: the score of the hit
+  LavAlignment.blocks   A list of dicts, one for each gap-free block in the hit
+    keys for blocks:
+    subject_end, subject_begin, query_begin, query_end, length, identity
+  """
   # Format assumptions:
   # This was written only to parse the output of LASTZ version 1.02.00.
   # Stanza starts and ends are on their own lines
@@ -22,7 +42,8 @@ class LavReader(object):
   # Sequence file names do not contain whitespace
   # h stanzas are present
   # s stanzas:
-  # - rev_comp_flag's are given
+  # - rev_comp_flag's and sequence_number's are given
+  # - only query sequences can be reverse complemented
 
   def __init__(self, filepath):
     self.hits = []
@@ -86,6 +107,29 @@ class LavReader(object):
       self.hits.append(current_hit)
 
 
+  def convert(self):
+    """Convert all coordinates to forward strand, 1-based, from the start.
+    There cannot be any reverse-complemented subject sequences, or this will
+    raise a FormatError."""
+    for hit in self.hits:
+      sstart = hit.subject['begin']
+      qstart = hit.query['begin']
+      qend = hit.query['end']
+      if hit.subject['revcomp']:
+        raise FormatError('Invalid LAV: Subject sequence '+hit.subject['name']
+          +'cannot be reverse complemented.')
+      for aln in hit.alignments:
+        aln.subject['begin'] = aln.subject['begin'] + sstart - 1
+        aln.subject['end'] = aln.subject['end'] + sstart - 1
+        if hit.query['revcomp']:
+          begin_temp = aln.query['begin']
+          aln.query['begin'] = qend - aln.query['end'] + 1
+          aln.query['end'] = qend - begin_temp + 1
+        else:
+          aln.query['begin'] = aln.query['begin'] + qstart - 1
+          aln.query['end'] = aln.query['end'] + qstart - 1
+
+
   def _stanza_start(self, line):
     """Detect if this line begins a stanza. If so, return the type (a single
     letter). If not, return None. The line should already be stripped."""
@@ -126,9 +170,13 @@ class LavReader(object):
 
 
   def _parse_h(self, line, current_hit, stanza_line):
+    # remove quotes, '>' FASTA character, and reverse complement string
     name = line.strip('"')
     if name[0] == '>':
       name = name[1:]
+    if name[len(name)-21:] == ' (reverse complement)':
+      name = name[:len(name)-21]
+    # get FASTA id
     fields = name.split()
     if fields:
       identifier = fields[0]
