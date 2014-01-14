@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # requires Python 2.7
-__version__ = 'c0c4122'
+__version__ = '83fbd59'
 from collections import OrderedDict
 import copy
 
@@ -18,17 +18,20 @@ class LavReader(object):
   system, call the convert() method.
     Data structures:
   LavReader.hits        A list of LavHits
+  LavHit.parent         The LavReader containing the LavHit
   LavHit.subject        A dict containing data on the hit's subject sequence
   LavHit.query          A dict containing data on the hit's query sequence
       keys for subject and query:
       filename, id, name, seqnum, revcomp, begin, end 
   LavHit.alignments     A list of LavAlignments
+  LavAlignment.parent   The LavHit containing the LavAlignment
   LavAlignment.score    An int: the score of the hit
   LavAlignment.subject  A dict containing the subject start and end coordinate
   LavAlignment.query    A dict containing the query start and end coordinate
       keys for subject and query:
       begin, end
   LavAlignment.blocks   A list of LavBlocks, one for each gap-free block
+  LavBlock.parent       The LavAlignment containing the LavBlock
   LavBlock.identity     An int: the percent identity of the block
   LavBlock.subject      A dict containing the subject start and end coordinate
   LavBlock.query        A dict containing the query start and end coordinate
@@ -65,8 +68,8 @@ class LavReader(object):
     stanza_done = True
     stanza_line = 0
     line_num = 0
-    current_hit = LavHit()
-    current_alignment = LavAlignment()
+    current_hit = LavHit(self)
+    current_alignment = LavAlignment(current_hit)
     with open(filepath, 'rU') as filehandle:
       for raw_line in filehandle:
         line = raw_line.strip()
@@ -85,7 +88,7 @@ class LavReader(object):
           # if end of an alignment block, add it to the current hit
           if stanza == 'a' and len(current_alignment) > 0:
             current_hit.alignments.append(current_alignment)
-            current_alignment = LavAlignment()
+            current_alignment = LavAlignment(current_hit)
           stanza_done = True
           stanza = ''
           continue
@@ -95,7 +98,7 @@ class LavReader(object):
           # add previous hit to the list, start a new one
           if len(current_hit) > 0:
             self.hits.append(current_hit)
-            current_hit = LavHit()
+            current_hit = LavHit(self)
           # file names, input sequence info (revcomp, etc)
           try:
             current_hit = self._parse_s(line, current_hit, stanza_line)
@@ -236,7 +239,7 @@ class LavReader(object):
     elif stanza_line >= 4:
       if not (len(fields) == 6 and fields[0] == 'l'):
         raise FormatError('Invalid LAV: Error in "l" line of "a" stanza.')
-      block = LavBlock()
+      block = LavBlock(current_alignment)
       block.subject['begin'] = int(fields[1])
       block.query['begin']   = int(fields[2])
       block.subject['end']   = int(fields[3])
@@ -248,7 +251,8 @@ class LavReader(object):
 
 class LavHit(object):
 
-  def __init__(self):
+  def __init__(self, reader):
+    self.parent = reader
     self.subject = {}
     self.query = {}
     self.alignments = []
@@ -262,7 +266,8 @@ class LavHit(object):
 
 class LavAlignment(object):
 
-  def __init__(self):
+  def __init__(self, hit):
+    self.parent = hit
     self.score = None
     self.subject = {}
     self.query = {}
@@ -277,7 +282,8 @@ class LavAlignment(object):
 
 class LavBlock(object):
 
-  def __init__(self):
+  def __init__(self, alignment):
+    self.parent = alignment
     self.identity = None
     self.subject = {}
     self.query = {}
