@@ -11,7 +11,6 @@ class FormatError(Exception):
 
 
 
-
 class LavReader(object):
   """Parse an LAV file and provide an API for querying its fields.
   By default, the data will be represented exactly as it appears in the file
@@ -21,23 +20,29 @@ class LavReader(object):
   LavReader.hits        A list of LavHits
   LavHit.subject        A dict containing data on the hit's subject sequence
   LavHit.query          A dict containing data on the hit's query sequence
-    keys for subject and query:
-    filename, id, name, seqnum, revcomp, begin, end 
+      keys for subject and query:
+      filename, id, name, seqnum, revcomp, begin, end 
   LavHit.alignments     A list of LavAlignments
   LavAlignment.score    An int: the score of the hit
   LavAlignment.subject  A dict containing the subject start and end coordinate
   LavAlignment.query    A dict containing the query start and end coordinate
-    keys for subject and query:
-    begin, end
+      keys for subject and query:
+      begin, end
   LavAlignment.blocks   A list of LavBlocks, one for each gap-free block
   LavBlock.identity     An int: the percent identity of the block
   LavBlock.subject      A dict containing the subject start and end coordinate
   LavBlock.query        A dict containing the query start and end coordinate
-    keys for subject and query:
-    begin, end
+      keys for subject and query:
+      begin, end
+    __len__ implementations:
   len(LavHit)           = number of alignments in LavHit.alignments
   len(LavAlignment)     = number of blocks in LavAlignment.blocks
   len(LavBlock)         = number of bases aligned in the block
+    __iter__ implementations:
+  iter(LavReader)       = iter(LavReader.hits)
+  iter(LavHit)          = iter(LavHit.alignments)
+  iter(LavAlignment)    = iter(LavAlignment.blocks)
+
   """
   # Format assumptions:
   # This was written only to parse the output of LASTZ version 1.02.00.
@@ -50,6 +55,8 @@ class LavReader(object):
   # s stanzas:
   # - rev_comp_flag's and sequence_number's are given
   # - only query sequences can be reverse complemented
+  def __iter__(self):
+    return iter(self.hits)
 
   def __init__(self, filepath):
     self.hits = []
@@ -166,10 +173,10 @@ class LavReader(object):
         +'in "s" stanzas.')
     try:
       filename = fields[0].strip('"')
-      begin = int(fields[1])
-      end = int(fields[2])
-      revcomp = fields[3] == '1'
-      seqnum = int(fields[4])
+      begin    = int(fields[1])
+      end      = int(fields[2])
+      revcomp  = fields[3] == '1'
+      seqnum   = int(fields[4])
     except ValueError:
       raise FormatError('Invalid LAV: Problem in "s" stanza: either a file'
         +'name with a space, or a non-integer coordinate.')
@@ -246,6 +253,9 @@ class LavHit(object):
     self.query = {}
     self.alignments = []
 
+  def __iter__(self):
+    return iter(self.alignments)
+
   def __len__(self):
     return len(self.alignments)
 
@@ -257,6 +267,9 @@ class LavAlignment(object):
     self.subject = {}
     self.query = {}
     self.blocks = []
+
+  def __iter__(self):
+    return iter(self.blocks)
 
   def __len__(self):
     return len(self.blocks)
