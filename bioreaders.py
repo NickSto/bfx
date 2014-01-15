@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 # requires Python 2.7
-__version__ = '83fbd59'
+__version__ = '8cfa41d'
 from collections import OrderedDict
 import copy
+
 
 class FormatError(Exception):
   def __init__(self, message=None):
@@ -63,6 +64,7 @@ class LavReader(object):
 
   def __init__(self, filepath):
     self.hits = []
+    self.converted = False
     
     stanza = ''
     stanza_done = True
@@ -99,6 +101,7 @@ class LavReader(object):
           if len(current_hit) > 0:
             self.hits.append(current_hit)
             current_hit = LavHit(self)
+            current_alignment = LavAlignment(current_hit)
           # file names, input sequence info (revcomp, etc)
           try:
             current_hit = self._parse_s(line, current_hit, stanza_line)
@@ -129,6 +132,8 @@ class LavReader(object):
     complemented query sequences.
     There cannot be any reverse-complemented subject sequences, or this will
     raise a FormatError."""
+    if self.converted:
+      return
     for hit in self.hits:
       if hit.subject['revcomp']:
         raise FormatError('Invalid LAV: Subject sequence '+hit.subject['name']
@@ -137,6 +142,7 @@ class LavReader(object):
         alignment = self._convert_segment(alignment, hit)
         for block in alignment.blocks:
           block = self._convert_segment(block, hit)
+    self.converted = True
 
 
   def _convert_segment(self, segment, hit):
