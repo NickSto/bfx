@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # requires Python 2.7
-__version__ = '8cfa41d'
+__version__ = 'a084956'
 from collections import OrderedDict
 import copy
 
@@ -833,6 +833,9 @@ class FastaBaseGenerator(object):
     self.filehandle = open(filepath, 'rU')
     self.reading = False
 
+  def __iter__(self):
+    return self.new()
+
   def new(self, which_seq=None):
 
     seqnum = None
@@ -884,9 +887,8 @@ class FastaBaseGenerator(object):
 def main():
   import sys
   fbg = FastaBaseGenerator(sys.argv[1])
-  base_generator = fbg.new()
   count = 0
-  for base in base_generator:
+  for base in fbg:
     count+=1
     if count > 20:
       break
