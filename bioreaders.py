@@ -12,6 +12,88 @@ class FormatError(Exception):
 
 
 
+###############################################################################
+#                                   FASTA                                     #
+###############################################################################
+
+
+class FastaLineGenerator(object):
+  """A simple FASTA parser that only reads a line at a time into memory.
+  Usage:
+  fasta = FastaLineGenerator('/home/user/sequence.fasta')
+  for line in fasta:
+    print "There is a sequence with this FASTA identifier: "+fasta.id
+    print "It has a line with this sequence: "+line
+  """
+
+  def __init__(self, filepath):
+    self.filehandle = open(filepath, 'rU')
+    self.id = None
+
+  def __iter__(self):
+    return self.new()
+
+  def new(self):
+    while True:
+      line_raw = self.filehandle.readline()
+      if not line_raw:
+        raise StopIteration
+      line = line_raw.strip()
+      if not line:
+        continue # allow empty lines
+      if line[0] == '>':
+        self.id = line.split()[0]
+        self.id = self.id[1:] # remove ">"
+        continue
+      else:
+        yield line
+
+
+#TODO: see 0notes.txt
+class FastaBaseGenerator(object):
+  """For when you absolutely have to read one base at a time. VERY SLOW.
+  Usage:
+  fasta = FastaBaseGenerator('/home/user/sequence.fasta')
+  for base in fasta:
+    print "There is a sequence with this FASTA identifier: "+fasta.id
+    print "This is the next base from it: "+base
+  """
+
+  def __init__(self, filepath):
+    self.filehandle = open(filepath, 'rU')
+    self.header = False
+    self.id = None
+
+  def __iter__(self):
+    return self.new()
+
+  def new(self):
+
+    newline = True
+    while True:
+      base = self.filehandle.read(1)
+      if not base:
+        raise StopIteration
+      elif base == '\n':
+        newline = True
+        self.header = False
+      elif newline and base == '>':
+        newline = False
+        self.header = True
+        self.id = ''
+      elif self.header:
+        self.id += base
+      else:
+        newline = False
+        yield base
+
+
+
+###############################################################################
+#                                    LAV                                      #
+###############################################################################
+
+
 class LavReader(object):
   """Parse an LAV file and provide an API for querying its fields.
   By default, the data will be represented exactly as it appears in the file
@@ -47,18 +129,18 @@ class LavReader(object):
   iter(LavHit)          = iter(LavHit.alignments)
   iter(LavAlignment)    = iter(LavAlignment.blocks)
 
+  Format assumptions:
+  **This was written only to parse the output of LASTZ version 1.02.00.**
+  Stanza starts and ends are on their own lines.
+  - E.g. there will be nothing (except whitespace) before or after "a {" on
+    the line in which it appears. The same goes for "}".
+  Stanza labels are single alphabetic characters ("Census" stanzas are ignored).
+  Sequence file names do not contain whitespace.
+  h stanzas are present.
+  s stanzas:
+  - rev_comp_flag's and sequence_number's are given.
+  - only query sequences can be reverse complemented.
   """
-  # Format assumptions:
-  # This was written only to parse the output of LASTZ version 1.02.00.
-  # Stanza starts and ends are on their own lines
-  # - E.g. there will be nothing (except whitespace) before or after "a {" on
-  #   the line in which it appears. The same goes for "}".
-  # Stanza labels are single alphabetic characters
-  # Sequence file names do not contain whitespace
-  # h stanzas are present
-  # s stanzas:
-  # - rev_comp_flag's and sequence_number's are given
-  # - only query sequences can be reverse complemented
   def __iter__(self):
     return iter(self.hits)
 
@@ -299,6 +381,11 @@ class LavBlock(object):
 
 
 
+###############################################################################
+#                                    VCF                                      #
+###############################################################################
+
+#TODO: Replace necessary getters, setters with property decorators, remove rest
 class VCFReader(object):
   """A simple VCF parser which can read Naive Variant Caller output."""
 
@@ -377,9 +464,7 @@ class VCFReader(object):
       return False
 
 
-#TODO: Separate systems for saying an attribute is not initialized and that its
-#      value in the file is null
-#TODO: Replace getters, setters with property decorators
+#TODO: Total rewrite. I wrote this before I learned the virtue of simplicity.
 class VCFSite(object):
 
   def __init__(self):
@@ -824,77 +909,6 @@ class VCFSite(object):
       coverages[sample_name] = total
 
     return coverages
-
-
-class FastaLineGenerator(object):
-  """A simple FASTA parser that only reads a line at a time into memory.
-  Usage:
-  fasta = FastaLineGenerator('/home/user/sequence.fasta')
-  for line in fasta:
-    print "There is a sequence with this FASTA identifier: "+fasta.id
-    print "It has a line with this sequence: "+line
-  """
-
-  def __init__(self, filepath):
-    self.filehandle = open(filepath, 'rU')
-    self.id = None
-
-  def __iter__(self):
-    return self.new()
-
-  def new(self):
-    while True:
-      line_raw = self.filehandle.readline()
-      if not line_raw:
-        raise StopIteration
-      line = line_raw.strip()
-      if not line:
-        continue # allow empty lines
-      if line[0] == '>':
-        self.id = line.split()[0]
-        self.id = self.id[1:] # remove ">"
-        continue
-      else:
-        yield line
-
-
-#TODO: see 0notes.txt
-class FastaBaseGenerator(object):
-  """For when you absolutely have to read one base at a time.
-  Usage:
-  fasta = FastaBaseGenerator('/home/user/sequence.fasta')
-  for base in fasta:
-    print "There is a sequence with this FASTA identifier: "+fasta.id
-    print "This is the next base from it: "+base
-  """
-
-  def __init__(self, filepath):
-    self.filehandle = open(filepath, 'rU')
-    self.header = False
-    self.id = None
-
-  def __iter__(self):
-    return self.new()
-
-  def new(self):
-
-    newline = True
-    while True:
-      base = self.filehandle.read(1)
-      if not base:
-        raise StopIteration
-      elif base == '\n':
-        newline = True
-        self.header = False
-      elif newline and base == '>':
-        newline = False
-        self.header = True
-        self.id = ''
-      elif self.header:
-        self.id += base
-      else:
-        newline = False
-        yield base
 
 
 def main():
