@@ -2,6 +2,7 @@
 # requires Python 2.7
 __version__ = 'a084956'
 from collections import OrderedDict
+import string
 import copy
 
 
@@ -28,6 +29,7 @@ class FastaLineGenerator(object):
 
   def __init__(self, filepath):
     self.filehandle = open(filepath, 'rU')
+    self.name = None
     self.id = None
 
   def __iter__(self):
@@ -42,8 +44,11 @@ class FastaLineGenerator(object):
       if not line:
         continue # allow empty lines
       if line[0] == '>':
-        self.id = line.split()[0]
-        self.id = self.id[1:] # remove ">"
+        self.name = line[1:]  # remove ">"
+        if self.name:
+          self.id = self.name.split()[0]
+        else:
+          self.id = ''
         continue
       else:
         yield line
@@ -62,7 +67,9 @@ class FastaBaseGenerator(object):
   def __init__(self, filepath):
     self.filehandle = open(filepath, 'rU')
     self.header = False
+    self.name = None
     self.id = None
+    self._in_id = None
 
   def __iter__(self):
     return self.new()
@@ -80,9 +87,16 @@ class FastaBaseGenerator(object):
       elif newline and base == '>':
         newline = False
         self.header = True
+        self._in_id = True
+        self.name = ''
         self.id = ''
       elif self.header:
-        self.id += base
+        if self._in_id:
+          if base in string.whitespace:
+            self._in_id = False
+          else:
+            self.id += base
+        self.name += base
       else:
         newline = False
         yield base
