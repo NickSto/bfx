@@ -826,59 +826,72 @@ class VCFSite(object):
     return coverages
 
 
-#TODO: see 0notes.txt
-class FastaBaseGenerator(object):
+class FastaLineGenerator(object):
+  """A simple FASTA parser that only reads a line at a time into memory.
+  Usage:
+  fasta = FastaLineGenerator('/home/user/sequence.fasta')
+  for line in fasta:
+    print "There is a sequence with this FASTA identifier: "+fasta.id
+    print "It has a line with this sequence: "+line
+  """
 
   def __init__(self, filepath):
     self.filehandle = open(filepath, 'rU')
-    self.reading = False
+    self.id = None
 
   def __iter__(self):
     return self.new()
 
-  def new(self, which_seq=None):
-
-    seqnum = None
-    seqid = None
-    if isinstance(which_seq, int):
-      seqnum = which_seq
-    if isinstance(which_seq, basestring):
-      seqid = which_seq
-
-    # read until correct FASTA header
-    record = 0
-    while not self.reading:
-      line_orig = self.filehandle.readline()
-      if not line_orig:
-        break
-      line = line_orig.rstrip('\r\n')
+  def new(self):
+    while True:
+      line_raw = self.filehandle.readline()
+      if not line_raw:
+        raise StopIteration
+      line = line_raw.strip()
       if not line:
-        continue # allow blank lines
+        continue # allow empty lines
       if line[0] == '>':
-        if seqnum:
-          record+=1
-          if record >= seqnum:
-            self.reading = True
-        elif seqid:
-          record_id = line.split()[0]
-          if record_id == '>'+seqid:
-            self.reading = True
-        else:
-          self.reading = True
+        self.id = line.split()[0]
+        self.id = self.id[1:] # remove ">"
+        continue
+      else:
+        yield line
+
+
+#TODO: see 0notes.txt
+class FastaBaseGenerator(object):
+  """For when you absolutely have to read one base at a time.
+  Usage:
+  fasta = FastaBaseGenerator('/home/user/sequence.fasta')
+  for base in fasta:
+    print "There is a sequence with this FASTA identifier: "+fasta.id
+    print "This is the next base from it: "+base
+  """
+
+  def __init__(self, filepath):
+    self.filehandle = open(filepath, 'rU')
+    self.header = False
+    self.id = None
+
+  def __iter__(self):
+    return self.new()
+
+  def new(self):
 
     newline = True
-    while self.reading:
+    while True:
       base = self.filehandle.read(1)
       if not base:
-        self.reading = False
+        raise StopIteration
       elif base == '\n':
         newline = True
-      elif base == '>':
-        if newline:
-          self.reading = False
-        else:
-          newline = False
-          yield base
+        self.header = False
+      elif newline and base == '>':
+        newline = False
+        self.header = True
+        self.id = ''
+      elif self.header:
+        self.id += base
       else:
         newline = False
         yield base
