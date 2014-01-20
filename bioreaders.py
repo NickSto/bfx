@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # requires Python 2.7
-__version__ = 'a084956'
+__version__ = '40f8364'
 from collections import OrderedDict
 import string
 import copy
@@ -157,6 +157,9 @@ class LavReader(object):
   """
   def __iter__(self):
     return iter(self.hits)
+
+  def __len__(self):
+    return len(self.hits)
 
   def __init__(self, filepath):
     self.hits = []
