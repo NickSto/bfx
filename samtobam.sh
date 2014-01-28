@@ -1,5 +1,5 @@
 #!/bin/bash
-set -uex
+set -ue
 
 if [ ${#@} -lt 1 ]; then
   echo "Produces a sorted, indexed BAM file from a SAM file." 
@@ -15,6 +15,8 @@ sam=$1
 base=$(echo "$sam" | sed -r 's/\.sam$//')
 tmpbam=$base.tmp.bam
 bam=$base.bam
+
+set -x
 
 samtools view -Sb $sam > $tmpbam
 

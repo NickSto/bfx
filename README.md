@@ -1,4 +1,4 @@
-bx-commons
+common
 ==========
 
-Useful scripts for bioinformatics
+Add any script that you think could be useful to someone else. Let's try to only have one script for each purpose, so if you'd like to add a script that's similar to an existing one, consider adding the functionality to the existing one instead.
