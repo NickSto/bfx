@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# original author: Nick Stoler
 import os
 import sys
 from optparse import OptionParser

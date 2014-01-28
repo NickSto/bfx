@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# original author: Nick Stoler
 from __future__ import print_function
 import sys
 import os

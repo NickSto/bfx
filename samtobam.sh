@@ -1,4 +1,5 @@
 #!/bin/bash
+# original author: Nick Stoler
 set -ue
 
 if [ ${#@} -lt 1 ]; then

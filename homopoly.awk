@@ -1,4 +1,5 @@
 #!/usr/bin/env bioawk
+# original author: Nick Stoler
 # Print the location, length, and base for all homopolymers above a given
 # length in a FASTA sequence.
 # USAGE: $ bioawk -f homopoly.awk -c fastx -v thres=4 ~/data/chrM-rCRS.fa

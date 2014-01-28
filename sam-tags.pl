@@ -1,4 +1,5 @@
 #!/usr/bin/perl -w
+# original author: Nick Stoler
 use strict;
 
 if (@ARGV && $ARGV[0] =~ m/^-?-h/) {

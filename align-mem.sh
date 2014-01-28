@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# original author: Nick Stoler
 # Automates all the steps to generate an indexed BAM file using BWA and SAMTools
 # input is a reference genome file and a query reads file
 set -ue
