@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-# requires Python 2.7
-__version__ = '9d848d0'
 
 
 class FormatError(Exception):
