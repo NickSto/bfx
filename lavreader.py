@@ -61,10 +61,15 @@ class LavReader(object):
   def __len__(self):
     return len(self.hits)
 
-  def __init__(self, filepath):
+  def __init__(self, filepath, convert=True):
     self.hits = []
     self.converted = False
-    
+    self._parse_lav(filepath)
+    if convert:
+      self.convert()
+  
+
+  def _parse_lav(self, filepath):
     stanza = ''
     stanza_done = True
     stanza_line = 0
@@ -132,7 +137,7 @@ class LavReader(object):
     There cannot be any reverse-complemented subject sequences, or this will
     raise a FormatError."""
     if self.converted:
-      return
+      return False
     for hit in self.hits:
       if hit.subject['revcomp']:
         raise FormatError('Invalid LAV: Subject sequence '+hit.subject['name']
@@ -142,6 +147,7 @@ class LavReader(object):
         for block in alignment.blocks:
           block = self._convert_segment(block, hit)
     self.converted = True
+    return True
 
 
   def _convert_segment(self, segment, hit):
