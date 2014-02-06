@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-__version__ = '0.5'
+__version__ = '0.7'
 
 
 class FormatError(Exception):
@@ -162,9 +162,8 @@ class LavReader(object):
     segment.subject['begin'] = segment.subject['begin'] + subj_start - 1
     segment.subject['end'] = segment.subject['end'] + subj_start - 1
     if hit.query['revcomp']:
-      begin_temp = segment.query['begin']
-      segment.query['begin'] = quer_end - segment.query['end'] + 1
-      segment.query['end'] = quer_end - begin_temp + 1
+      segment.query['begin'] = quer_end - segment.query['begin'] + 1
+      segment.query['end'] = quer_end - segment.query['end'] + 1
     else:
       segment.query['begin'] = segment.query['begin'] + quer_start - 1
       segment.query['end'] = segment.query['end'] + quer_start - 1
