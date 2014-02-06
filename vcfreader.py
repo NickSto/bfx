@@ -2,6 +2,7 @@
 # requires Python 2.7
 from collections import OrderedDict
 import copy
+__version__ = '0.51'
 
 
 class FormatError(Exception):
@@ -90,6 +91,7 @@ class VCFReader(object):
 
 
 #TODO: Total rewrite. I wrote this before I learned the virtue of simplicity.
+#      (I'd spent too long in Java.)
 class VCFSite(object):
 
   def __init__(self):
@@ -371,6 +373,7 @@ class VCFSite(object):
     genotypes = copy.deepcopy(self.get_genotypes())
     for sample_name in self._sample_names:
       site = VCFSite()
+      site._sample_names = [sample_name]
       site.set_chrom(self.get_chrom())
       site.set_pos(self.get_pos())
       site.set_id(self.get_id())
@@ -534,17 +537,3 @@ class VCFSite(object):
       coverages[sample_name] = total
 
     return coverages
-
-
-def main():
-  import sys
-  fbg = FastaBaseGenerator(sys.argv[1])
-  count = 0
-  for base in fbg:
-    count+=1
-    if count > 20:
-      break
-    print str(count)+": "+base
-
-if __name__ == '__main__':
-  main()
