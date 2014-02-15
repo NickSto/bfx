@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# original author: Nick Stoler
 set -ue
 
 if [[ $# -ge 1 ]]; then
