@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-__version__ = '0.5'
+import os
+__version__ = '0.7'
 
 
 class FormatError(Exception):
@@ -18,7 +19,7 @@ class FastaLineGenerator(object):
   """
 
   def __init__(self, filepath):
-    self.filehandle = open(filepath, 'rU')
+    self.filepath = filepath
     self.name = None
     self.id = None
 
@@ -26,8 +27,9 @@ class FastaLineGenerator(object):
     return self.new()
 
   def new(self):
+    filehandle = open(self.filepath, 'rU')
     while True:
-      line_raw = self.filehandle.readline()
+      line_raw = filehandle.readline()
       if not line_raw:
         raise StopIteration
       line = line_raw.strip()
@@ -42,6 +44,34 @@ class FastaLineGenerator(object):
         continue
       else:
         yield line
+
+
+  def extract(self, start, end, chrom=None):
+    """Extract a subsequence based on a start and end coordinate.
+    The start and end are inclusive, 1-based. If chrom is not supplied, it will
+    default to the first chromosome (record) encountered in the FASTA file.
+    If the end coordinate is beyond the end of the chromosome, the returned
+    sequence will be truncated to the end of the chromosome. If the start
+    coordinate is beyond the end of the chromosome, an empty string will be
+    returned."""
+    outseq = ''
+    line_start = 1
+    for line in self:
+      if chrom is not None and self.id != chrom:
+        continue
+      line_end = line_start + len(line) - 1
+      # if we haven't encountered the start yet, keep searching
+      if line_end < start:
+        line_start = line_end + 1
+        continue
+      slice_start = max(start, line_start) - line_start
+      slice_end = min(end, line_end) - line_start + 1
+      outseq += line[slice_start:slice_end]
+      # done? (on the last line?)
+      if line_end >= end:
+        break
+      line_start = line_end + 1
+    return outseq
 
 
 #TODO: see 0notes.txt
