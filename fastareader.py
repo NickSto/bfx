@@ -19,6 +19,8 @@ class FastaLineGenerator(object):
   """
 
   def __init__(self, filepath):
+    if not os.path.isfile(filepath):
+      raise IOError('File not found: "%s"' % filepath)
     self.filepath = filepath
     self.name = None
     self.id = None
