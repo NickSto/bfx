@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import os
-__version__ = '0.7'
+__version__ = '0.8'
 
 
 class FormatError(Exception):
@@ -46,6 +46,16 @@ class FastaLineGenerator(object):
         continue
       else:
         yield line
+
+
+  def bases(self):
+    """Generator that yields single bases, while still reading a whole line at
+    a time underneath.
+    This should be the best of both worlds: it yields a base at a time, but it
+    reads a line at a time from the file so it's not slow as molasses."""
+    for line in self.new():
+      for base in line:
+        yield base
 
 
   def extract(self, start, end, chrom=None):
