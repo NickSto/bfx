@@ -44,40 +44,47 @@ def get_nm(read):
 sam = pysam.Samfile(args.input, 'rb')
 out = pysam.Samfile(output, 'wb', template=sam)
 
-paired = 0
+total = 0
 unpaired = 0
-for read in sam:
+filtered = 0
+for read1 in sam:
+  total+=1
   try:
-    read1 = read
     read2 = sam.next()
+    total+=1
     # check for actual pair
     if args.check_pairs:
-      if read1.qname == read2.qname:
-        paired+=1
-      else:
-        # step through reads, skipping unpaired ones
-        while read1.qname != read2.qname:
-          if args.unpaired_fatal:
-            fail("Error: unpaired read found:\n{}".format(read1.qname))
-          unpaired+=1
-          read1 = read2
-          read2 = sam.next()
+      # step through reads, skipping unpaired ones
+      while read1.qname != read2.qname:
+        unpaired+=1
+        if args.unpaired_fatal:
+          fail("Error: unpaired read found:\n{}".format(read1.qname))
+        read1 = read2
+        read2 = sam.next()
+        total+=1
+        filtered+=1
     # check NM tag and print if the pair passes
     if (get_nm(read1) <= (read1.rlen * args.threshold/100) and
         get_nm(read2) <= (read2.rlen * args.threshold/100)):
       out.write(read1)
       out.write(read2)
+    else:
+      filtered+=2
   # StopIteration thrown on read2 = sam.next()
   except StopIteration:
+    unpaired+=1
     if args.unpaired_fatal:
       fail("Error: unpaired read found:\n{}".format(read1.qname))
-    unpaired+=1
     sam.close()
     out.close()
 
+# final report
+if total == 0:
+  fail("No reads found!")
+elif args.check_pairs and unpaired/total > 0.5:
+  print ('Very many "unpaired" reads found. Maybe the BAM wasn\'t sorted by '
+    'read name?')
+print 'total reads:    '+str(total)
 if args.check_pairs:
-  if unpaired/paired > 0.75:
-    print ('Very many "unpaired" reads found. Maybe the BAM wasn\'t sorted by '
-      'read name?')
-  print 'paired reads:   '+str(paired)
   print 'unpaired reads: '+str(unpaired)
+print 'reads removed:  '+str(filtered)
