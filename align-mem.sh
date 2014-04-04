@@ -7,6 +7,7 @@ set -ue
 # must be in PATH
 REQUIRED="bwa samtools"
 REF_THRES=2000000000
+BWA_OPTS="-M"
 
 if [[ $# -lt 2 ]]; then
   echo "USAGE:
@@ -79,7 +80,7 @@ if ! ( [[
 fi
 
 # alignment
-cmd="bwa mem $ref $fastq1 $fastq2 > $sam"
+cmd="bwa mem $BWA_OPTS $ref $fastq1 $fastq2 > $sam"
 echo "\$ $cmd"; eval "$cmd"
 
 # make BAM
