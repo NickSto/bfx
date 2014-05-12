@@ -26,6 +26,20 @@ while (<>) {
   }
 }
 
-for my $tag (sort keys %tags) {
+for my $tag (sort_hash(%tags)) {
   print "$tag: $tags{$tag}\n";
+}
+
+
+# Sort a dictionary by its values (largest to smallest)
+# Takes a hash, returns an ordered array of its keys
+sub sort_hash {
+  my %hash = @_;
+  my @keys_unsorted = keys(%hash);
+  my @keys_sorted =
+    map  { $_->[0] }
+    sort { $b->[1] <=> $a->[1] }
+    map  { [ $_, $hash{$_} ] }
+    @keys_unsorted;
+  return @keys_sorted;
 }
