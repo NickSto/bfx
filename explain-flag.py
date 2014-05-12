@@ -2,10 +2,9 @@
 # original author: Nick Stoler
 import os
 import sys
-from optparse import OptionParser
+import argparse
 
-OPT_DEFAULTS = {'only_set':False}
-USAGE = "USAGE: %prog [options] flagint [flagint [flagint [..]]]"
+USAGE = "$ %(prog)s [options] flagint [flagint [flagint [..]]]"
 DESCRIPTION = """Decompose a SAM flag integer and print the individual flags
 that are set."""
 EPILOG = """Meanings taken from http://picard.sourceforge.net/explain-flags.html
@@ -29,27 +28,19 @@ NUM_FLAGS = len(MEANINGS)
 
 def main():
 
-  parser = OptionParser(usage=USAGE, description=DESCRIPTION, epilog=EPILOG)
+  parser = argparse.ArgumentParser(
+    usage=USAGE, description=DESCRIPTION, epilog=EPILOG
+  )
+  parser.add_argument('flags', metavar='flagint', nargs='+',
+    help='The integer form of the flags for the read (e.g. "83" for 1, 2, 16, '
+      'and 64).')
+  parser.add_argument('-s', '--only-set', action='store_true',
+    help='Only print the set flags.')
 
-  # parser.add_option('-s', '--str', dest='str',
-  #   default=OPT_DEFAULTS.get('str'), help='default: %default')
-  # parser.add_option('-i', '--int', dest='int', type='int',
-  #   default=OPT_DEFAULTS.get('int'), help='')
-  # parser.add_option('-f', '--float', dest='float', type='float',
-  #   default=OPT_DEFAULTS.get('float'), help='')
-  parser.add_option('-s', '--only-set', dest='only_set',
-    action='store_const', const=not OPT_DEFAULTS.get('only_set'),
-    default=OPT_DEFAULTS.get('only_set'),
-    help='Print the unset flags too')
+  args = parser.parse_args()
 
-  (options, arguments) = parser.parse_args()
-
-  if not arguments:
-    parser.print_help()
-    fail("Please provide a SAM flag.")
-
-  for flag in arguments:
-    if len(arguments) > 1:
+  for flag in args.flags:
+    if len(args.flags) > 1:
       print flag+":"
     try:
       flagint = int(flag)
@@ -59,7 +50,7 @@ def main():
       fail('Error: invalid flag (greater than '+str(2**NUM_FLAGS - 1)
         +'. Failed on "'+flag+'"')
 
-    print_flags(get_set_flags(flagint), print_unset=not(options.only_set))
+    print_flags(get_set_flags(flagint), print_unset=not(args.only_set))
 
 
 def get_set_flags(flagint):
