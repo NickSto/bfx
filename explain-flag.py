@@ -76,9 +76,9 @@ def print_flags(set_flags, print_unset=False):
   for i in range(len(set_flags)):
     if print_unset:
       if set_flags[i]:
-        print "SET: %4d %s" % (2**i, MEANINGS[2**i].upper())
+        print "[X] %4d %s" % (2**i, MEANINGS[2**i].upper())
       else:
-        print "not: %4d %s" % (2**i, MEANINGS[2**i].lower())
+        print "[ ] %4d %s" % (2**i, MEANINGS[2**i].lower())
     else:
       if set_flags[i]:
         print "%4d %s" % (2**i, MEANINGS[2**i])
