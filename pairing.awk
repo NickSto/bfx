@@ -13,13 +13,14 @@ BEGIN {
 last == $1 {
   occurrences++
 }
-last != $1 && occurrences > 0 {
+last != $1 && NR > 1 {
   totals[occurrences]++
   occurrences = 1
 }
 {
   last = $1
 }
+
 END {
   totals[occurrences]++
   for (occurrences in totals) {
