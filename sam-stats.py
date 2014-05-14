@@ -36,10 +36,12 @@ def main():
   for flag in samflags.FLAGS:
     flag_totals[flag] = 0
 
+  total_reads = 0
   last_name = None
   reads_set = []
   pair_stats = {'pairs':0, 'singletons':0, 'extras':0}
   for read in samreader.read(filehandle):
+    total_reads+=1
     # Add flags to totals
     read['flags'] = samflags.decompose(int(read['flag']))
     for flag in flag_totals:
@@ -55,6 +57,7 @@ def main():
       reads_set.append(read)
       last_name = name
 
+  print str(total_reads)+" alignments"
   print "flags totals:"
   for (flag, total) in flag_totals.items():
     width = max(len(str(flag)), len(str(total)))
@@ -63,9 +66,15 @@ def main():
   for (flag, total) in flag_totals.items():
     width = max(len(str(flag)), len(str(total)))
     sys.stdout.write((" {:"+str(width)+"}").format(total))
-  print "\n"
+  print
+  for (flag, total) in flag_totals.items():
+    width = max(len(str(flag)), len(str(total)))
+    pct = int(100*total/total_reads)
+    sys.stdout.write((" {:>"+str(width)+"}").format(str(pct)+"%"))
+  print
 
   if args.name_sorted:
+    print
     pair_stats = read_pair_stats(reads_set, pair_stats)
     for (category, total) in pair_stats.items():
       print "{:11} {}".format(category+":", total)
