@@ -12,8 +12,13 @@ class LavReader(object):
   """
   Parse an LAV file and provide an API for querying its fields.
   By default, the data will be represented exactly as it appears in the file
-  (but with numbers as int types). To convert coordinates to a more intuitive
-  system, call the convert() method.
+  (but with numbers as int types), with the exception that by default
+  coordinates are converted to a more intuitive system (see the convert()
+  method).
+  In this API, the "subject" sequence is the first one listed in the s and h
+  stanzas of the LAV file. More usefully, it's from the first FASTA given in
+  the LASTZ command line (for version 1.02.00). The "query" sequence is the
+  other one, of course.
     Data structures:
   LavReader.hits        A list of LavHits
   LavHit.parent         The LavReader containing the LavHit
