@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-__version__ = '0.7'
+__version__ = '0.71'
 
 
 class FormatError(Exception):
@@ -25,21 +25,21 @@ class LavReader(object):
   LavHit.subject        A dict containing data on the hit's subject sequence
   LavHit.query          A dict containing data on the hit's query sequence
       keys for subject and query:
-      filename, id, name, seqnum, revcomp, begin, end 
+      filename, id, name, seqnum, revcomp, begin, end, length
   LavHit.alignments     A list of LavAlignments
   LavAlignment.parent   The LavHit containing the LavAlignment
   LavAlignment.score    An int: the score of the hit
   LavAlignment.subject  A dict containing the subject start and end coordinate
   LavAlignment.query    A dict containing the query start and end coordinate
       keys for subject and query:
-      begin, end
+      begin, end, length
   LavAlignment.blocks   A list of LavBlocks, one for each gap-free block
   LavBlock.parent       The LavAlignment containing the LavBlock
   LavBlock.identity     An int: the percent identity of the block
   LavBlock.subject      A dict containing the subject start and end coordinate
   LavBlock.query        A dict containing the query start and end coordinate
       keys for subject and query:
-      begin, end
+      begin, end, length
     __len__ implementations:
   len(LavHit)           = number of alignments in LavHit.alignments
   len(LavAlignment)     = number of blocks in LavAlignment.blocks
@@ -203,12 +203,14 @@ class LavReader(object):
       current_hit.subject['filename'] = filename
       current_hit.subject['begin']    = begin
       current_hit.subject['end']      = end
+      current_hit.subject['length']   = abs(end - begin) + 1
       current_hit.subject['revcomp']  = revcomp
       current_hit.subject['seqnum']   = seqnum
     elif stanza_line == 2:
       current_hit.query['filename'] = filename
       current_hit.query['begin']    = begin
       current_hit.query['end']      = end
+      current_hit.query['length']   = abs(end - begin) + 1
       current_hit.query['revcomp']  = revcomp
       current_hit.query['seqnum']   = seqnum
     return current_hit
@@ -252,15 +254,23 @@ class LavReader(object):
         raise FormatError('Invalid LAV: Error in "e" line of "a" stanza.')
       current_alignment.subject['end'] = int(fields[1])
       current_alignment.query['end']   = int(fields[2])
+      current_alignment.subject['length'] = abs(current_alignment.subject['end']
+                                      - current_alignment.subject['begin']) + 1
+      current_alignment.query['length'] = abs(current_alignment.query['end']
+                                      - current_alignment.query['begin']) + 1
     elif stanza_line >= 4:
       if not (len(fields) == 6 and fields[0] == 'l'):
         raise FormatError('Invalid LAV: Error in "l" line of "a" stanza.')
       block = LavBlock(current_alignment)
-      block.subject['begin'] = int(fields[1])
-      block.query['begin']   = int(fields[2])
-      block.subject['end']   = int(fields[3])
-      block.query['end']     = int(fields[4])
-      block.identity         = int(fields[5])
+      block.subject['begin']  = int(fields[1])
+      block.query['begin']    = int(fields[2])
+      block.subject['end']    = int(fields[3])
+      block.query['end']      = int(fields[4])
+      block.identity          = int(fields[5])
+      block.subject['length'] = abs(block.subject['end'] -
+                                    block.subject['begin']) + 1
+      block.query['length']   = abs(block.query['end'] -
+                                    block.query['begin']) + 1
       current_alignment.blocks.append(block)
     return current_alignment
 
