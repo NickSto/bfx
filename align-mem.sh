@@ -77,11 +77,13 @@ if [[ ! -d $outdir ]]; then
 fi
 
 # get basename from fastq filename
-# remove .fq
-basename=$(basename $fq1 .fq)
-# if that doesn't work, try .fastq
-if [[ $basename == $fq1 ]]; then
-  basename=$(basename $fq1 .fastq)
+# remove .gz, if present
+basename=$(basename $fq1 .gz)
+# remove .fq or .fastq
+if [[ ${basename:$((${#basename}-3))} == '.fq' ]]; then
+  basename=$(basename $basename .fq)
+else
+  basename=$(basename $basename .fastq)
 fi
 # remove _1 or _2
 if [[ $basename =~ _[12]$ ]]; then
