@@ -20,7 +20,9 @@ Options:
                first FASTQ file.
 -o \"bwa opts\": The options you want to pass to the \"bwa mem\" command. Make
                sure to enclose your options in quotes.
-               Default: \"$BWA_OPTS_DEFAULT\""
+               Default: \"$BWA_OPTS_DEFAULT\"
+-l logfile:    Output stderr of all commands to this file. Stdout will still
+               come out of the script's stdout."
 
 function fail {
   echo "$@"
@@ -41,12 +43,14 @@ done
 ########## Gather settings ##########
 
 # Get options
-outdir=""
+outdir=''
+logfile=''
 bwa_opts="$BWA_OPTS_DEFAULT"
-while getopts ":d:o:h" opt; do
+while getopts ":d:o:l:h" opt; do
   case "$opt" in
-    d) outdir=$OPTARG;;
+    d) outdir="$OPTARG";;
     o) bwa_opts="$OPTARG";;
+    l) logfile="$OPTARG";;
     h) fail "$USAGE";;
   esac
 done
@@ -68,12 +72,9 @@ ref="${@:$OPTIND:1}"
 fq1="${@:$OPTIND+1:1}"
 fq2="${@:$OPTIND+2:1}"
 
-# set $outdir, check it exists
+# set $outdir
 if [[ -z $outdir ]]; then
   outdir=$(dirname $fq1)
-fi
-if [[ ! -d $outdir ]]; then
-  fail "Error: could not find output directory $outdir"
 fi
 
 # get basename from fastq filename
@@ -95,20 +96,21 @@ fi
 bamtmp=$outdir/$basename.tmp.bam
 bam=$outdir/$basename.bam
 
-echo "\
-Settings:
+if [[ -n $fq2 ]]; then
+  fq2line="
+  fq2:      $fq2"
+else
+  fq2line=''
+fi
+echo "Settings:
   basename: $basename
   ref:      $ref
-  fq1:      $fq1"
-if [[ -n $fq2 ]]; then
-  echo "  fq2:      $fq2"
-fi
-echo "\
+  fq1:      $fq1$fq2line
   bamtmp:   $bamtmp
   bam:      $bam
   bwa opts: $bwa_opts"
 
-# check that input files exist
+# check that input files and output dir exist
 files="$ref $fq1 $fq2"
 for file in $files; do
   if [[ ! -s $file ]]; then
@@ -122,9 +124,21 @@ for file in "$bam" "$bamtmp"; do
 existing file or the input fastq file."
   fi
 done
+if [[ ! -d $outdir ]]; then
+  fail "Error: could not find output directory $outdir"
+fi
+if [[ $logfile ]] && [[ -e $logfile ]]; then
+  fail "Error: specified log file \"$logfile\" already exists"
+fi
 
 
 ########## Do alignment ##########
+
+if [[ $logfile ]]; then
+  logpipe="2>> $logfile"
+else
+  logpipe=''
+fi
 
 # does the reference look indexed?
 if ! ( [[
@@ -139,20 +153,35 @@ if ! ( [[
   if [[ $(du -sb $ref | awk '{print $1}') -lt $REF_THRES ]]; then
     algo="is"
   fi
-  echev "bwa index -a $algo $ref"
+  if [[ $logfile ]]; then
+    echo -e "\t\t\t::::: bwa index :::::" >> "$logfile";
+  fi
+  echev "bwa index -a $algo $ref $logpipe"
 fi
 
 # alignment
-echev "bwa mem $bwa_opts $ref $fq1 $fq2 | samtools view -Sb - > $bamtmp"
+if [[ $logfile ]]; then
+  echo -e "\t\t\t::::: bwa mem | samtools view :::::" >> "$logfile";
+fi
+echev "bwa mem $bwa_opts $ref $fq1 $fq2 $logpipe | samtools view -Sb - > $bamtmp $logpipe"
 
 # sort BAM
-echev "samtools sort -o $bamtmp dummy > $bam"
+if [[ $logfile ]]; then
+  echo -e "\t\t\t::::: samtools sort :::::" >> "$logfile";
+fi
+echev "samtools sort -o $bamtmp dummy > $bam $logpipe"
 
 # index BAM
-echev "samtools index $bam"
+if [[ $logfile ]]; then
+  echo -e "\t\t\t::::: samtools index :::::" >> "$logfile";
+fi
+echev "samtools index $bam $logpipe"
 
 echev "rm $bamtmp"
 
+if [[ $logfile ]]; then
+  echo -e "\t\t\t::::: done :::::" >> "$logfile";
+fi
 echo -n "$fq1 "
 if [[ -n $fq2 ]]; then
   echo -n "and $fq2 "
