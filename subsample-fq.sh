@@ -5,15 +5,32 @@ if [ x$BASH = x ] || [ ! $BASH_VERSINFO ] || [ $BASH_VERSINFO -lt 4 ]; then
 fi
 set -ue
 
+USAGE="Usage: \$ $(basename $0) input_1.fq input_2.fq output_1.fq output_2.fq"
+
 function main {
 
+  if [[ $# -lt 4 ]] || [[ $1 == '-h' ]]; then
+    fail "$USAGE"
+  fi
+
+  in1="$1"
+  in2="$2"
+  out1="$3"
+  out2="$4"
+
   # Code from Pierre Lindenbaum: https://www.biostars.org/p/6544/#6562
-  paste f1.fastq f2.fastq |\ #merge the two fastqs
-    awk '{ printf("%s",$0); n++; if(n%4==0) { printf("\n");} else { printf("\t\t");} }' |\ #merge by group of 4 lines
-    shuf  |\ #shuffle
-    head |\ #only 10 records
-    sed 's/\t\t/\n/g' |\ #restore the delimiters
-    awk '{print $1 > "file1.fastq"; print $2 > "file2.fatsq"}' #split in two files.
+  # merge the two fastqs
+  paste $in1 $in2 |\
+    # merge by group of 4 lines
+    awk '{ printf("%s",$0); n++; if(n%4==0) { printf("\n");} else { printf("\t\t");} }' |\
+    # shuffle
+    shuf  |\
+    # only 10 records
+    head |\
+    # restore the delimiters
+    sed 's/\t\t/\n/g' |\
+    # split in two files.
+    awk '{print $1 > "'$out1'"; print $2 > "'$out2'"}'
 
 }
 
