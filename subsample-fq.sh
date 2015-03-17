@@ -5,16 +5,22 @@ if [ x$BASH = x ] || [ ! $BASH_VERSINFO ] || [ $BASH_VERSINFO -lt 4 ]; then
 fi
 set -ue
 
-PAIRS_DEFAULT=10
+PCT_DEFAULT=1
 
-USAGE="Usage: \$ $(basename $0) input_1.fq input_2.fq output_1.fq output_2.fq"
+USAGE="Usage: \$ $(basename $0) [options] input_1.fq input_2.fq output_1.fq output_2.fq
+Options:
+-p: Proportion of input reads to output, in percent. Default: $PCT_DEFAULT%.
+-n: Absolute number of read pairs to output.
+WARNING: This assumes one-line reads (each record is 4 lines)."
 
 function main {
 
   # read in arguments
-  pairs="$PAIRS_DEFAULT"
-  while getopts ":n:h" opt; do
+  pct="$PCT_DEFAULT"
+  pairs=""
+  while getopts ":p:n:h" opt; do
     case "$opt" in
+      p) pct="$OPTARG";;
       n) pairs="$OPTARG";;
       h) fail "$USAGE";;
     esac
@@ -31,10 +37,30 @@ function main {
     fail "Error: GNU \"shuf\" not found (BSD doesn't have it)."
   fi
 
+  # Check lengths of fastq files.
+  wc1=$(wc -l $in1 | awk '{print $1}')
+  wc2=$(wc -l $in2 | awk '{print $1}')
+  if [[ $wc1 == $wc2 ]]; then
+    total_pairs=$((wc1/4))
+    if [[ $((total_pairs*4)) != $wc1 ]]; then
+      fail "Error: Input fastq files \"$in1\" and \"$in2\"
+have line counts that aren't multiples of 4. Make sure they don't contain multi-
+line sequences."
+    fi
+  else
+    fail "Error: Input fastq files \"$in1\" and \"$in2\"
+are different lengths: $wc1 and $wc2 lines, respectively."
+  fi
+
+  # Convert percent of reads to absolute number of reads.
+  if ! [[ $pairs ]]; then
+    pairs=$(printf %.0f $(echo "$total_pairs*$pct/100" | bc -l))
+  fi
+
   # Code from Pierre Lindenbaum: https://www.biostars.org/p/6544/#6562
-  # merge the two fastqs
+  # Merge the two fastqs.
   paste $in1 $in2 |\
-    # merge by group of 4 lines, print all eight (for both pairs) on one line
+    # Merge by groups of 4 lines, print all 8 (for both pairs) on one line
     awk '
       {
         printf("%s",$0);
@@ -45,13 +71,13 @@ function main {
           printf("\t\t");
         }
       }' |\
-    # shuffle
+    # Shuffle lines.
     shuf  |\
-    # only 10 records
+    # Cut off after $pairs lines.
     head -n $pairs |\
-    # restore the delimiters
+    # Restore the delimiters.
     sed 's/\t\t/\n/g' |\
-    # split in two files.
+    # Split in two files.
     awk '{print $1 > "'$out1'"; print $2 > "'$out2'"}'
 
 }
