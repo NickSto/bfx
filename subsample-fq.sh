@@ -78,7 +78,7 @@ are different lengths: $wc1 and $wc2 lines, respectively."
     # Restore the delimiters.
     sed 's/\t\t/\n/g' |\
     # Split in two files.
-    awk '{print $1 > "'$out1'"; print $2 > "'$out2'"}'
+    awk -F '\t' '{print $1 > "'$out1'"; print $2 > "'$out2'"}'
 
 }
 
