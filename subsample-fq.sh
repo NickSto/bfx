@@ -13,6 +13,10 @@ function main {
     fail "$USAGE"
   fi
 
+  if ! which shuf >/dev/null 2>/dev/null; then
+    fail "Error: GNU \"shuf\" not found (BSD doesn't have it)."
+  fi
+
   in1="$1"
   in2="$2"
   out1="$3"
@@ -21,8 +25,17 @@ function main {
   # Code from Pierre Lindenbaum: https://www.biostars.org/p/6544/#6562
   # merge the two fastqs
   paste $in1 $in2 |\
-    # merge by group of 4 lines
-    awk '{ printf("%s",$0); n++; if(n%4==0) { printf("\n");} else { printf("\t\t");} }' |\
+    # merge by group of 4 lines, print all eight (for both pairs) on one line
+    awk '
+      {
+        printf("%s",$0);
+        n++;
+        if (n % 4 == 0) {
+          printf("\n");
+        } else {
+          printf("\t\t");
+        }
+      }' |\
     # shuffle
     shuf  |\
     # only 10 records
