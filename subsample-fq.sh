@@ -5,22 +5,31 @@ if [ x$BASH = x ] || [ ! $BASH_VERSINFO ] || [ $BASH_VERSINFO -lt 4 ]; then
 fi
 set -ue
 
+PAIRS_DEFAULT=10
+
 USAGE="Usage: \$ $(basename $0) input_1.fq input_2.fq output_1.fq output_2.fq"
 
 function main {
 
-  if [[ $# -lt 4 ]] || [[ $1 == '-h' ]]; then
+  # read in arguments
+  pairs="$PAIRS_DEFAULT"
+  while getopts ":n:h" opt; do
+    case "$opt" in
+      n) pairs="$OPTARG";;
+      h) fail "$USAGE";;
+    esac
+  done
+  in1="${@:$OPTIND:1}"
+  in2="${@:$OPTIND+1:1}"
+  out1="${@:$OPTIND+2:1}"
+  out2="${@:$OPTIND+3:1}"
+  if ! [[ "${@:$OPTIND+3:1}" ]]; then
     fail "$USAGE"
   fi
 
   if ! which shuf >/dev/null 2>/dev/null; then
     fail "Error: GNU \"shuf\" not found (BSD doesn't have it)."
   fi
-
-  in1="$1"
-  in2="$2"
-  out1="$3"
-  out2="$4"
 
   # Code from Pierre Lindenbaum: https://www.biostars.org/p/6544/#6562
   # merge the two fastqs
@@ -39,7 +48,7 @@ function main {
     # shuffle
     shuf  |\
     # only 10 records
-    head |\
+    head -n $pairs |\
     # restore the delimiters
     sed 's/\t\t/\n/g' |\
     # split in two files.
