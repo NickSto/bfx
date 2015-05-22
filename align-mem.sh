@@ -8,7 +8,8 @@ REF_THRES=2000000000
 BWA_OPTS_DEFAULT="-M"
 
 USAGE="USAGE:
-  \$ $(basename $0) [-d outdir] [-o \"bwa opts\"] ref.fa reads_1.fq [reads_2.fq]
+  \$ $(basename $0) [-d outdir] [-o \"bwa opts\"] [-b name.bam] [-l logfile]
+     ref.fa reads_1.fq [reads_2.fq]
 Align FASTQ with BWA-MEM and generate an indexed BAM file.
 This names the output BAM using the base derived from the first fastq file,
 minus any .fq or .fastq extension, and minus any _1 or _2 suffix. It indexes the
@@ -21,6 +22,9 @@ Options:
 -o \"bwa opts\": The options you want to pass to the \"bwa mem\" command. Make
                sure to enclose your options in quotes.
                Default: \"$BWA_OPTS_DEFAULT\"
+-b name.bam:   The filename to use for the output BAM. Don't use a full path;
+               this is only the filename, which will be created in the FASTQ
+               directory, or the directory specified with -d.
 -l logfile:    Output stderr of all commands to this file. Stdout will still
                come out of the script's stdout."
 
@@ -45,10 +49,12 @@ done
 # Get options
 outdir=''
 logfile=''
+bam_name=''
 bwa_opts="$BWA_OPTS_DEFAULT"
-while getopts ":d:o:l:h" opt; do
+while getopts ":d:b:o:l:h" opt; do
   case "$opt" in
     d) outdir="$OPTARG";;
+    b) bam_name="$OPTARG";;
     o) bwa_opts="$OPTARG";;
     l) logfile="$OPTARG";;
     h) fail "$USAGE";;
@@ -93,8 +99,17 @@ if [[ $basename =~ _[12]$ ]]; then
 fi
 
 # create rest of filenames, print settings
-bamtmp=$outdir/$basename.tmp.bam
-bam=$outdir/$basename.bam
+if [[ $bam_name ]]; then
+  bam_name_base=$(basename $bam_name .bam)
+  bamtmp=$outdir/$bam_name_base.tmp.bam
+  bam=$outdir/$bam_name
+  if [[ $bamtmp == $bam ]]; then
+    fail "Error: Output bam name can't end in \".tmp.bam\"."
+  fi
+else
+  bamtmp=$outdir/$basename.tmp.bam
+  bam=$outdir/$basename.bam
+fi
 
 if [[ -n $fq2 ]]; then
   fq2line="
