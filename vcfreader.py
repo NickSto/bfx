@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # requires Python 2.7
+#TODO: Replace with fork of https://github.com/jamescasbon/PyVCF
 from collections import OrderedDict
 import copy
 __version__ = '0.51'
@@ -360,7 +361,26 @@ class VCFSite(object):
     if diff < 0:    # deletion
       return 'd'+str(-diff)
     elif diff > 0:  # insertion
+      # Note: Not sure this is right. Seems to work for the case where the ref is one base (always
+      # the case in VCF for insertions(?)), but not for the right reasons?
       return alt[:diff+1]
+    else:           # SNV
+      return alt[0]
+    #TODO: support for complex substitutions? (e.g. ref "GAT", alt "CCG")
+
+
+  def alt_to_variant2(self, alt):
+    """Returns different variant format, mostly useful when only indels are considered:
+    SNVs:       'A'  -> 'T'  = 'T'
+    deletions:  'CA' -> 'C'  = '1'
+    insertions: 'C'  -> 'CA' = 'A'"""
+    # N.B.: the reference allele is handled by the SNV logic
+    ref = self.get_ref()
+    diff = len(alt) - len(ref)
+    if diff < 0:    # deletion
+      return str(-diff)
+    elif diff > 0:  # insertion
+      return alt[len(ref):]
     else:           # SNV
       return alt[0]
     #TODO: support for complex substitutions? (e.g. ref "GAT", alt "CCG")
