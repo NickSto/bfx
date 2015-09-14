@@ -4,7 +4,7 @@ import sys
 import argparse
 import samflags
 
-USAGE = "$ %(prog)s [options] flagint [flagint [flagint [..]]]"
+USAGE = "$ %(prog)s [options] [flagint [flagint [..]]]"
 DESCRIPTION = """Decompose a SAM flag integer and print the individual flags that are set."""
 EPILOG = """Meanings taken from http://picard.sourceforge.net/explain-flags.html but double-checked
 against the SAM spec."""
@@ -14,12 +14,16 @@ MAX_VALUE = 2**len(samflags.FLAGS) - 1
 def main():
 
   parser = argparse.ArgumentParser(usage=USAGE, description=DESCRIPTION, epilog=EPILOG)
-  parser.add_argument('flags', metavar='flagint', nargs='+',
+  parser.add_argument('flags', metavar='flagint', nargs='*',
     help='The integer form of the flags for the read (e.g. "83" for 1, 2, 16, and 64).')
   parser.add_argument('-s', '--only-set', action='store_true',
     help='Only print the set flags.')
 
   args = parser.parse_args()
+
+  # If no flags are given, just print the list of flags and their integers.
+  if len(args.flags) == 0:
+    args.flags.append(0)
 
   for flag in args.flags:
     if len(args.flags) > 1:
