@@ -4,10 +4,10 @@ import sys
 import argparse
 import getreads
 
-OPT_DEFAULTS = {'win_len':10, 'thres':1.0, 'filt_bases':'N'}
+OPT_DEFAULTS = {'win_len':1, 'thres':1.0, 'filt_bases':'N'}
 USAGE = "%(prog)s [options]"
-DESCRIPTION = """Filter whole reads or trim reads by various criteria like quality scores or N
-content."""
+DESCRIPTION = """Trim the 5' ends of reads by sequence content, e.g. by GC content or presence of
+N's."""
 
 def main(argv):
 
@@ -45,9 +45,10 @@ def main(argv):
 
   args = parser.parse_args(argv[1:])
 
+  # Catch invalid argument combinations.
   if args.infile1 and args.infile2 and not (args.outfile1 and args.outfile2):
     fail('Error: If giving two input files (paired end), must specify both output files.')
-
+  # Determine filetypes, open input file parsers.
   filetype1 = get_filetype(args.infile1, args.filetype)
   file1_parser = iter(getreads.getparser(args.infile1, filetype=filetype1))
   if args.infile2:
@@ -58,11 +59,12 @@ def main(argv):
     filetype2 = None
     file2_parser = None
     paired = False
-
+  # Override output filetypes if it was specified on the command line.
   if args.out_filetype:
     filetype1 = args.out_filetype
     filetype2 = args.out_filetype
 
+  # Determine the filter bases and whether to invert the selection.
   filt_bases = args.filt_bases
   invert = args.invert
   if args.acgt:
@@ -72,13 +74,14 @@ def main(argv):
     filt_bases = 'ACGTUWSMKRYBDHVN-'
     invert = True
 
-  trim_reads(file1_parser, file2_parser, args.outfile1, args.outfile2, filetype1, filetype2, paired,
-             args.win_len, args.thres, filt_bases, invert)
-
-  if args.infile1 and args.infile1 is not sys.stdin:
-    args.infile1.close()
-  if paired:
-    args.infile2.close()
+  # Do the actual trimming.
+  try:
+    trim_reads(file1_parser, file2_parser, args.outfile1, args.outfile2, filetype1, filetype2,
+               paired, args.win_len, args.thres, filt_bases, invert)
+  finally:
+    for filehandle in (args.infile1, args.infile2, args.outfile1, args.outfile2):
+      if filehandle and filehandle is not sys.stdin and filehandle is not sys.stdout:
+        filehandle.close()
 
 
 def trim_reads(file1_parser, file2_parser, outfile1, outfile2, filetype1, filetype2, paired,
@@ -86,7 +89,7 @@ def trim_reads(file1_parser, file2_parser, outfile1, outfile2, filetype1, filety
   read1 = None
   read2 = None
   while True:
-    # Read in reads.
+    # Read in the reads.
     try:
       read1 = next(file1_parser)
       if paired:
@@ -94,11 +97,18 @@ def trim_reads(file1_parser, file2_parser, outfile1, outfile2, filetype1, filety
     except StopIteration:
       break
     # Do trimming.
-    read1.seq = trim(read1.seq, win_len, thres, filt_bases, invert)
-    read1.qual = read1.qual[:len(read1.seq)]
+    read1.seq = trim_read(read1.seq, win_len, thres, filt_bases, invert)
+    if filetype1 == 'fastq':
+      # If the output filetype is FASTQ, trim the quality scores too.
+      # If there are no input quality scores (i.e. the input is FASTA), use dummy scores instead.
+      # "z" is the highest alphanumeric score (PHRED 89), higher than any expected real score.
+      qual1 = read1.qual or 'z' * len(read1.seq)
+      read1.qual = qual1[:len(read1.seq)]
     if paired:
-      read2.seq = trim(read2.seq, win_len, thres, filt_bases, invert)
-      read2.qual = read2.qual[:len(read2.seq)]
+      read2.seq = trim_read(read2.seq, win_len, thres, filt_bases, invert)
+      if filetype2 == 'fastq':
+        qual2 = read2.qual or 'z' * len(read2.seq)
+        read2.qual = qual2[:len(read2.seq)]
       # Output reads if they both passed the filters.
       if read1.seq and read2.seq:
         write_read(outfile1, read1, filetype1)
@@ -137,7 +147,20 @@ def write_read(filehandle, read, filetype):
     filehandle.write('@{name}\n{seq}\n+\n{qual}\n'.format(**vars(read)))
 
 
-def trim(seq, win_len, thres, filt_bases, invert):
+def trim_read(seq, win_len, thres, filt_bases, invert):
+  """Trim an individual read and return its trimmed sequence.
+  This will track the frequency of bad bases in a window of length win_len, and trim once the
+  frequency goes below thres. The trim point will be just before the first (leftmost) bad base in
+  the window (the first window with a frequency below thres). The "bad" bases are the ones in
+  filt_bases if invert is False, or any base NOT in filt_bases if invert is True."""
+  # Algorithm:
+  # The window is a list which acts as a FIFO. As we scan from the left (3') end to the right (5')
+  # end, we append new bases to the right end of the window and pop them from the left end.
+  # Each base is only examined twice: when it enters the window and when it leaves it.
+  # We keep a running total of the number of bad bases in bad_bases_count, incrementing it when bad
+  # bases enter the window and decrementing it when they leave.
+  # We also track the location of bad bases in the window with bad_bases_coords so we can figure out
+  # where to cut if we have to trim.
   max_bad_bases = win_len * thres
   window = []
   bad_bases_count = 0
@@ -145,21 +168,23 @@ def trim(seq, win_len, thres, filt_bases, invert):
   for coord, base in enumerate(seq.upper()):
     # Shift window, adjust bad_bases_count and bad_bases_coords list.
     window.append(base)
-    # Is the new base a bad base?
+    # Is the new base we're adding to the window a bad base?
     if invert:
       bad_base = base not in filt_bases
     else:
       bad_base = base in filt_bases
+    # If so, increment the total and add its coordinate to the window.
     if bad_base:
       bad_bases_count += 1
       bad_bases_coords.append(coord)
     if len(window) > win_len:
       first_base = window.pop(0)
-      # Is the first base in the window a bad base?
+      # Is the base we're removing (the first base in the window) a bad base?
       if invert:
         bad_base = first_base not in filt_bases
       else:
         bad_base = first_base in filt_bases
+      # If so, decrement the total and remove its coordinate from the window.
       if bad_base:
         bad_bases_count -= 1
         bad_bases_coords.pop(0)
