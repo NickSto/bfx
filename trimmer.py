@@ -5,13 +5,13 @@ import argparse
 import getreads
 
 OPT_DEFAULTS = {'win_len':1, 'thres':1.0, 'filt_bases':'N'}
-USAGE = "%(prog)s [options]"
+USAGE = "%(prog)s [options] [input_1.fq [input_2.fq output_1.fq output_2.fq]]"
 DESCRIPTION = """Trim the 5' ends of reads by sequence content, e.g. by GC content or presence of
 N's."""
 
 def main(argv):
 
-  parser = argparse.ArgumentParser(description=DESCRIPTION)
+  parser = argparse.ArgumentParser(description=DESCRIPTION, usage=USAGE)
   parser.set_defaults(**OPT_DEFAULTS)
 
   parser.add_argument('infile1', metavar='reads_1.fq', nargs='?', type=argparse.FileType('r'),
@@ -38,6 +38,10 @@ def main(argv):
     help='Window size for trimming. Default: %(default)s.')
   parser.add_argument('-i', '--invert', action='store_true',
     help='Invert the filter bases: filter on bases NOT present in the --filt-bases.')
+  parser.add_argument('-m', '--min-length', type=int,
+    help='Set a minimum read length. Reads which are trimmed below this length will be filtered '
+         'out (omitted entirely from the output). Read pairs will be preserved: both reads in a '
+         'pair must exceed this length to be kept. Set to 0 to only omit empty reads.')
   parser.add_argument('-A', '--acgt', action='store_true',
     help='Filter on any non-ACGT base (shortcut for "--invert --filt-bases ACGT").')
   parser.add_argument('-I', '--iupac', action='store_true',
@@ -77,7 +81,7 @@ def main(argv):
   # Do the actual trimming.
   try:
     trim_reads(file1_parser, file2_parser, args.outfile1, args.outfile2, filetype1, filetype2,
-               paired, args.win_len, args.thres, filt_bases, invert)
+               paired, args.win_len, args.thres, filt_bases, invert, args.min_length)
   finally:
     for filehandle in (args.infile1, args.infile2, args.outfile1, args.outfile2):
       if filehandle and filehandle is not sys.stdin and filehandle is not sys.stdout:
@@ -85,7 +89,8 @@ def main(argv):
 
 
 def trim_reads(file1_parser, file2_parser, outfile1, outfile2, filetype1, filetype2, paired,
-               win_len, thres, filt_bases, invert):
+               win_len, thres, filt_bases, invert, min_length):
+  """Trim all the reads in the input file(s), writing to the output file(s)."""
   read1 = None
   read2 = None
   while True:
@@ -109,13 +114,13 @@ def trim_reads(file1_parser, file2_parser, outfile1, outfile2, filetype1, filety
       if filetype2 == 'fastq':
         qual2 = read2.qual or 'z' * len(read2.seq)
         read2.qual = qual2[:len(read2.seq)]
-      # Output reads if they both passed the filters.
-      if read1.seq and read2.seq:
+      # Output reads if they both pass the minimum length threshold (if any was given).
+      if min_length is None or (len(read1.seq) >= min_length and len(read2.seq) >= min_length):
         write_read(outfile1, read1, filetype1)
         write_read(outfile2, read2, filetype2)
     else:
-      # Output read if it passed the filters.
-      if read1.seq:
+      # Output read if it passes the minimum length threshold (if any was given).
+      if min_length is None or len(read1.seq) >= min_length:
         write_read(outfile1, read1, filetype1)
 
 
