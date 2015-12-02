@@ -9,6 +9,7 @@ USAGE = "%(prog)s [options] [input_1.fq [input_2.fq output_1.fq output_2.fq]]"
 DESCRIPTION = """Trim the 5' ends of reads by sequence content, e.g. by GC content or presence of
 N's."""
 
+
 def main(argv):
 
   parser = argparse.ArgumentParser(description=DESCRIPTION, usage=USAGE)
@@ -42,12 +43,17 @@ def main(argv):
     help='Set a minimum read length. Reads which are trimmed below this length will be filtered '
          'out (omitted entirely from the output). Read pairs will be preserved: both reads in a '
          'pair must exceed this length to be kept. Set to 0 to only omit empty reads.')
+  parser.add_argument('--error',
+    help='Fail with this error message (useful for Galaxy tool).')
   parser.add_argument('-A', '--acgt', action='store_true',
     help='Filter on any non-ACGT base (shortcut for "--invert --filt-bases ACGT").')
   parser.add_argument('-I', '--iupac', action='store_true',
     help='Filter on any non-IUPAC base (shortcut for "--invert --filt-bases ACGTUWSMKRYBDHVN-").')
 
   args = parser.parse_args(argv[1:])
+
+  if args.error:
+    fail('Error: '+args.error)
 
   # Catch invalid argument combinations.
   if args.infile1 and args.infile2 and not (args.outfile1 and args.outfile2):

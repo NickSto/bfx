@@ -1,0 +1,8 @@
+name: sequence_content_trimmer
+owner: nick
+categories: [Fastq Manipulation, Fasta Manipulation]
+description: Trim FASTA and FASTQ reads based on sequence content.
+include:
+  - trimmer.xml
+  - trimmer.py
+  - getreads.py

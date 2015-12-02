@@ -1,0 +1,84 @@
+<tool id="sequence_content_trimmer" version="0.1" name="Sequence Content Trimmer">
+  <description>trim reads based on certain bases</description>
+  <command interpreter="python">
+  trimmer.py $input1
+  #if $paired.is_paired:
+    $input2 $output1 $output2
+    #if ('fasta' in $input1.extension and 'fastq' in $input2.extension) or ('fastq' in $input1.extension and 'fasta' in $input2.extension)
+      --error 'Both input files must be either fastq or fasta (no mixing the two).'
+    #end if
+  #end if
+  #if $input1.extension == 'fastq' or $input1.extension == 'fastqsanger' or $input1.extension == 'fastqillumina' or $input1.extension == 'fastqsolexa'
+    -f fastq
+  #elif $input1.extension == 'fasta'
+    -f fasta
+  #else
+    -f $input1.extension
+  #end if
+  -b $bases -t $thres -w $win_len $invert
+  #if $min_len.has_min_len:
+    -m $min_len.value
+  #end if
+  #if not $paired.is_paired:
+    &gt; $output1
+  #end if
+  </command>
+  <inputs>
+    <conditional name="paired">
+      <param name="is_paired" type="select" label="Paired reads?">
+        <option value="" selected="True">Unpaired</option>
+        <option value="true">Paired</option>
+      </param>
+      <when value="true">
+        <param name="input1" type="data" format="fasta,fastq" label="Input reads (mate 1)"/>
+        <param name="input2" type="data" format="fasta,fastq" label="Input reads (mate 2)"/>
+      </when>
+      <when value="">
+        <param name="input1" type="data" format="fasta,fastq" label="Input reads"/>
+      </when>
+    </conditional>
+    <param name="bases" type="text" value="N" label="Bases to filter on"/>
+    <param name="thres" type="float" value="0.5" min="0" max="1" label="Frequency threshold" help="Trim when the frequency of filter bases (or non-filter bases, if inverting) exceeds this value."/>
+    <param name="win_len" type="integer" value="10" min="1" label="Size of the window"/>
+    <param name="invert" type="boolean" truevalue="--invert" falsevalue="" checked="False" label="Invert filter bases" help="Trim when the frequency of bases NOT in the &quot;filter bases&quot; list exceeds the threshold."/>
+    <conditional name="min_len">
+      <param name="has_min_len" type="boolean" truevalue="true" falsevalue="" checked="False" label="Set a minimum read length"/>
+      <when value="true"> 
+        <param name="value" type="integer" value="10" min="0" label="Minimum read length" help="Reads trimmed to less than this length will be omitted from the output. Pairs will be preserved: both must exceed this threshold to be kept."/>
+      </when>
+    </conditional>
+  </inputs>
+  <outputs>
+    <data name="output1" format_source="input1"/>
+    <data name="output2" format_source="input2">
+      <filter>paired['is_paired']</filter>
+    </data>
+  </outputs>
+
+  <help>
+
+.. class:: infomark
+
+**What it does**
+
+This tool trims the 3' ends of reads based on the presence of the given bases. For instance, trim when N's are encountered or when the GC content exceeds a certain frequency.
+
+
+.. class:: infomark
+
+**How it works**
+
+This will slide along the read with a window, and trim once the frequency of filter bases exceeds the frequency threshold (unless "Invert filter bases" is enabled, in which case it will trim once non-filter bases exceed the threshold).
+
+The trim point will be just before the first (leftmost) filter base in the final window (the one where the frequency exceeded the threshold).
+
+
+.. class:: infomark
+
+**Input**
+
+The inputs can be in the following formats: fasta, fastq, fastqsanger, fastqillumina, and fastqsolexa. Both must be either a fasta or fastq type (no mixing fastq and fasta).
+
+  </help>
+
+</tool>
