@@ -1,12 +1,6 @@
 #!/usr/bin/env python
 import os
-__version__ = '0.8'
-
-
-class FormatError(Exception):
-  def __init__(self, message=None):
-    if message:
-      Exception.__init__(self, message)
+__version__ = '0.81'
 
 
 class FastaLineGenerator(object):
@@ -15,48 +9,46 @@ class FastaLineGenerator(object):
   fasta = FastaLineGenerator('/home/user/sequence.fasta')
   for line in fasta:
     print "There is a sequence with this FASTA identifier: "+fasta.id
+    print "(Its full name is "+fasta.name+".)"
     print "It has a line with this sequence: "+line
+  All strings (the line, id, and name) are stripped, and should not end in a
+  newline.
   """
 
   def __init__(self, filepath):
     if not os.path.isfile(filepath):
-      raise IOError('File not found: "%s"' % filepath)
+      raise IOError('File not found: "'+filepath+'"')
     self.filepath = filepath
     self.name = None
     self.id = None
 
   def __iter__(self):
-    return self.new()
+    return self.lines()
 
-  def new(self):
-    filehandle = open(self.filepath, 'rU')
-    while True:
-      line_raw = filehandle.readline()
-      if not line_raw:
-        raise StopIteration
-      line = line_raw.strip()
-      if not line:
-        continue # allow empty lines
-      if line[0] == '>':
-        self.name = line[1:]  # remove ">"
-        if self.name:
-          self.id = self.name.split()[0]
+  def lines(self):
+    with open(self.filepath, 'rU') as filehandle:
+      for line_raw in filehandle:
+        line = line_raw.strip()
+        if not line:
+          continue  # allow empty lines
+        if line.startswith('>'):
+          self.name = line[1:]  # remove ">"
+          if self.name:
+            self.id = self.name.split()[0]
+          else:
+            self.id = ''
+          continue
         else:
-          self.id = ''
-        continue
-      else:
-        yield line
-
+          yield line
 
   def bases(self):
     """Generator that yields single bases, while still reading a whole line at
     a time underneath.
     This should be the best of both worlds: it yields a base at a time, but it
     reads a line at a time from the file so it's not slow as molasses."""
-    for line in self.new():
+    for line in self.lines():
       for base in line:
         yield base
-
 
   def extract(self, start, end, chrom=None):
     """Extract a subsequence based on a start and end coordinate.
@@ -107,7 +99,6 @@ class FastaBaseGenerator(object):
     return self.new()
 
   def new(self):
-
     newline = True
     while True:
       base = self.filehandle.read(1)
@@ -132,4 +123,3 @@ class FastaBaseGenerator(object):
       else:
         newline = False
         yield base
-
