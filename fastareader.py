@@ -1,6 +1,30 @@
 #!/usr/bin/env python
 import os
-__version__ = '0.81'
+__version__ = '0.9'
+
+
+class FastaReadGenerator(object):
+  """Read FASTA files and return one whole sequence at a time."""
+
+  def __init__(self, filepath):
+    self.line_generator = FastaLineGenerator(filepath)
+
+  def __iter__(self):
+    return self.reads()
+
+  def reads(self):
+    read = Read()
+    read.name = None
+    for line in self.line_generator:
+      if self.line_generator.name != read.name:
+        if read.name is not None:
+          yield read
+        read = Read()
+        read.name = self.line_generator.name
+        read.id = self.line_generator.id
+      read.seq += line
+    if read.name is not None:
+      yield read
 
 
 class FastaLineGenerator(object):
@@ -25,6 +49,8 @@ class FastaLineGenerator(object):
   def __iter__(self):
     return self.lines()
 
+  #TODO: Give some signal that we just finished a sequence. Otherwise, we can't validate that there
+  #      aren't sequences with identical names one after another.
   def lines(self):
     with open(self.filepath, 'rU') as filehandle:
       for line_raw in filehandle:
@@ -123,3 +149,9 @@ class FastaBaseGenerator(object):
       else:
         newline = False
         yield base
+
+class Read(object):
+  def __init__(self):
+    self.seq = ''
+    self.id = ''
+    self.name = ''
