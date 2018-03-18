@@ -46,6 +46,10 @@ class Reader(object):
     self.filehandle = filehandle
   def __iter__(self):
     return self.parser()
+  def bases(self):
+    for read in self.parser():
+      for base in read.seq:
+        yield base
 
 
 class TsvReader(Reader):
