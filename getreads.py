@@ -23,7 +23,7 @@ def getparser(filehandle, filetype='fasta'):
   elif filetype == 'tsv':
     return TsvReader(filehandle)
   else:
-    raise ValueError('Illegal argument: filetype=\''+filetype+'\'')
+    raise ValueError('Illegal argument: filetype="{}"'.format(filetype))
 
 
 class FormatError(Exception):
@@ -104,7 +104,7 @@ class FastaReader(Reader):
       if not line_raw:
         if read.seq:
           yield read
-        raise StopIteration
+        return
       line = line_raw.strip()
       # Allow empty lines.
       if not line:
@@ -131,7 +131,7 @@ class FastqReader(Reader):
       if not line_raw:
         if read.seq:
           yield read
-        raise StopIteration
+        return
       line = line_raw.strip()
       # Allow empty lines.
       if not line:
