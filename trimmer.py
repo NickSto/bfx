@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 from __future__ import division
+from __future__ import print_function
 import sys
+import math
 import argparse
+import collections
 import getreads
 
-OPT_DEFAULTS = {'win_len':1, 'thres':1.0, 'filt_bases':'N'}
+OPT_DEFAULTS = {'win_len':1, 'thres':0.5, 'filt_bases':'N', 'stats_format':'human'}
 USAGE = "%(prog)s [options] [input_1.fq [input_2.fq output_1.fq output_2.fq]]"
 DESCRIPTION = """Trim the 5' ends of reads by sequence content, e.g. by GC content or presence of
 N's."""
@@ -49,6 +52,9 @@ def main(argv):
     help='Filter on any non-ACGT base (shortcut for "--invert --filt-bases ACGT").')
   parser.add_argument('-I', '--iupac', action='store_true',
     help='Filter on any non-IUPAC base (shortcut for "--invert --filt-bases ACGTUWSMKRYBDHVN-").')
+  parser.add_argument('-q', '--quiet', action='store_true',
+    help='Don\'t print trimming stats on completion.')
+  parser.add_argument('-T', '--tsv', dest='stats_format', action='store_const', const='tsv')
 
   args = parser.parse_args(argv[1:])
 
@@ -85,18 +91,28 @@ def main(argv):
     invert = True
 
   # Do the actual trimming.
+  filters = {'win_len':args.win_len, 'thres':args.thres, 'filt_bases':filt_bases, 'invert':invert,
+             'min_len':args.min_length}
   try:
-    trim_reads(file1_parser, file2_parser, args.outfile1, args.outfile2, filetype1, filetype2,
-               paired, args.win_len, args.thres, filt_bases, invert, args.min_length)
+    stats = trim_reads(file1_parser, file2_parser, args.outfile1, args.outfile2,
+                       filetype1, filetype2, paired, filters)
   finally:
     for filehandle in (args.infile1, args.infile2, args.outfile1, args.outfile2):
       if filehandle and filehandle is not sys.stdin and filehandle is not sys.stdout:
         filehandle.close()
 
+  if not args.quiet:
+    print_stats(stats, args.stats_format)
+
 
 def trim_reads(file1_parser, file2_parser, outfile1, outfile2, filetype1, filetype2, paired,
-               win_len, thres, filt_bases, invert, min_length):
+               filters):
   """Trim all the reads in the input file(s), writing to the output file(s)."""
+  min_len = filters['min_len']
+  trims1 = collections.Counter()
+  trims2 = collections.Counter()
+  omitted1 = collections.Counter()
+  omitted2 = collections.Counter()
   read1 = None
   read2 = None
   while True:
@@ -108,26 +124,41 @@ def trim_reads(file1_parser, file2_parser, outfile1, outfile2, filetype1, filety
     except StopIteration:
       break
     # Do trimming.
-    read1.seq = trim_read(read1.seq, win_len, thres, filt_bases, invert)
-    if filetype1 == 'fastq':
-      # If the output filetype is FASTQ, trim the quality scores too.
-      # If there are no input quality scores (i.e. the input is FASTA), use dummy scores instead.
-      # "z" is the highest alphanumeric score (PHRED 89), higher than any expected real score.
-      qual1 = read1.qual or 'z' * len(read1.seq)
-      read1.qual = qual1[:len(read1.seq)]
+    read1, trim_len1 = trim_read(read1, filters, filetype1)
+    trims1[trim_len1] += 1
     if paired:
-      read2.seq = trim_read(read2.seq, win_len, thres, filt_bases, invert)
-      if filetype2 == 'fastq':
-        qual2 = read2.qual or 'z' * len(read2.seq)
-        read2.qual = qual2[:len(read2.seq)]
+      read2, trim_len2 = trim_read(read2, filters, filetype2)
+      trims2[trim_len2] += 1
       # Output reads if they both pass the minimum length threshold (if any was given).
-      if min_length is None or (len(read1.seq) >= min_length and len(read2.seq) >= min_length):
+      if min_len is None or (len(read1.seq) >= min_len and len(read2.seq) >= min_len):
         write_read(outfile1, read1, filetype1)
         write_read(outfile2, read2, filetype2)
+      else:
+        if len(read1.seq) < min_len:
+          omitted1[trim_len1] += 1
+        if len(read2.seq) < min_len:
+          omitted2[trim_len2] += 1
     else:
       # Output read if it passes the minimum length threshold (if any was given).
-      if min_length is None or len(read1.seq) >= min_length:
+      if min_len is None or len(read1.seq) >= min_len:
         write_read(outfile1, read1, filetype1)
+      else:
+        omitted1[trim_len1] += 1
+  # Compile stats.
+  stats = {}
+  stats['reads'] = sum(trims1.values()) + sum(trims2.values())
+  stats['omitted'] = sum(omitted1.values()) + sum(omitted2.values())
+  if paired:
+    stats['med_trim1'] = median_counted_item(trims1)
+    stats['med_trim2'] = median_counted_item(trims2)
+    stats['med_trim'] = median_counted_item(trims1 + trims2)
+    stats['med_omitted_trim1'] = median_counted_item(omitted1)
+    stats['med_omitted_trim2'] = median_counted_item(omitted2)
+    stats['med_omitted_trim'] = median_counted_item(omitted1 + omitted2)
+  else:
+    stats['med_trim'] = median_counted_item(trims1)
+    stats['med_omitted_trim'] = median_counted_item(omitted1)
+  return stats
 
 
 def get_filetype(infile, filetype_arg):
@@ -158,7 +189,20 @@ def write_read(filehandle, read, filetype):
     filehandle.write('@{name}\n{seq}\n+\n{qual}\n'.format(**vars(read)))
 
 
-def trim_read(seq, win_len, thres, filt_bases, invert):
+def trim_read(read, filters, filetype):
+  trimmed_seq = trim_seq(read.seq, **filters)
+  trim_len = len(read.seq) - len(trimmed_seq)
+  read.seq = trimmed_seq
+  if filetype == 'fastq':
+    # If the output filetype is FASTQ, trim the quality scores too.
+    # If there are no input quality scores (i.e. the input is FASTA), use dummy scores instead.
+    # "z" is the highest alphanumeric score (PHRED 89), higher than any expected real score.
+    qual = read.qual or 'z' * len(read.seq)
+    read.qual = qual[:len(read.seq)]
+  return read, trim_len
+
+
+def trim_seq(seq, win_len=1, thres=1.0, filt_bases='N', invert=False, **kwargs):
   """Trim an individual read and return its trimmed sequence.
   This will track the frequency of bad bases in a window of length win_len, and trim once the
   frequency goes below thres. The trim point will be just before the first (leftmost) bad base in
@@ -199,7 +243,6 @@ def trim_read(seq, win_len, thres, filt_bases, invert):
       if bad_base:
         bad_bases_count -= 1
         bad_bases_coords.pop(0)
-    # print bad_bases_coords
     # Are we over the threshold?
     if bad_bases_count > max_bad_bases:
       break
@@ -209,6 +252,75 @@ def trim_read(seq, win_len, thres, filt_bases, invert):
     return seq[0:first_bad_base]
   else:
     return seq
+
+
+def median_counted_item(counter, average=True):
+  # Find the halfway point.
+  total = sum(counter.values())
+  odd = total % 2 == 1
+  halfway = math.ceil(total/2)
+  # Sort the items and go through them, looking for the one at the halfway point.
+  items = sorted(counter.items(), key=lambda i: i[0])
+  left = None
+  total_seen = 0
+  for item, count in items:
+    total_seen += count
+    if odd:
+      if total_seen >= halfway:
+        return item
+    else:
+      if total_seen == halfway:
+        if average:
+          left = item
+        else:
+          return item
+      elif total_seen > halfway:
+        if left is None:
+          return item
+        elif average:
+          try:
+            return (left+item)/2
+          except TypeError:
+            raise TypeError('Cannot average types {} ({!r}) and {} ({!r}).'
+                            .format(type(left).__name__, left, type(item).__name__, item))
+        else:
+          return item
+
+
+def print_stats(stats, format='human'):
+  # Replace any None's with 0's.
+  for key in list(stats.keys()):
+    if stats[key] is None:
+      stats[key] = 0
+  # Was this a paired-end run?
+  paired = 'med_trim2' in stats
+  if format == 'human':
+    lines = [
+      'Total reads in input:\t{reads}',
+      'Reads filtered out:\t{omitted}'
+    ]
+    lines.append('Median bases trimmed:\t{med_trim}')
+    if paired:
+      lines.append('  For mate 1:\t{med_trim1}')
+      lines.append('  For mate 2:\t{med_trim2}')
+    if stats['med_omitted_trim'] is not None:
+      lines.append('Median bases trimmed from filtered reads:\t{med_omitted_trim}')
+      if paired:
+        lines.append('  For mate 1:\t{med_omitted_trim1}')
+        lines.append('  For mate 2:\t{med_omitted_trim2}')
+  elif format == 'tsv':
+    lines = [
+      '{reads}\t{omitted}'
+    ]
+    if paired:
+      lines.append('{med_trim}\t{med_trim1}\t{med_trim2}')
+      lines.append('{med_omitted_trim}\t{med_omitted_trim1}\t{med_omitted_trim2}')
+    else:
+      lines.append('{med_trim}')
+      lines.append('{med_omitted_trim}')
+  else:
+    fail('Error: Unrecognized format {!r}'.format(format))
+  sys.stderr.write('\n'.join(lines).format(**stats)+'\n')
 
 
 def fail(message):
