@@ -2,11 +2,11 @@
 from __future__ import division
 from __future__ import print_function
 import sys
-import math
 import argparse
 import collections
 import getreads
 
+QUANT_ORDER = 5
 OPT_DEFAULTS = {'win_len':1, 'thres':0.5, 'filt_bases':'N', 'stats_format':'human'}
 USAGE = "%(prog)s [options] [input_1.fq [input_2.fq output_1.fq output_2.fq]]"
 DESCRIPTION = """Trim the 5' ends of reads by sequence content, e.g. by GC content or presence of
@@ -147,17 +147,20 @@ def trim_reads(file1_parser, file2_parser, outfile1, outfile2, filetype1, filety
   # Compile stats.
   stats = {}
   stats['reads'] = sum(trims1.values()) + sum(trims2.values())
+  stats['trimmed'] = stats['reads'] - trims1[0] - trims2[0]
   stats['omitted'] = sum(omitted1.values()) + sum(omitted2.values())
+  # Quintiles for trim lengths.
+  stats['quants'] = {'order':QUANT_ORDER}
   if paired:
-    stats['med_trim1'] = median_counted_item(trims1)
-    stats['med_trim2'] = median_counted_item(trims2)
-    stats['med_trim'] = median_counted_item(trims1 + trims2)
-    stats['med_omitted_trim1'] = median_counted_item(omitted1)
-    stats['med_omitted_trim2'] = median_counted_item(omitted2)
-    stats['med_omitted_trim'] = median_counted_item(omitted1 + omitted2)
+    stats['quants']['trim1'] = get_counter_quantiles(trims1, order=QUANT_ORDER)
+    stats['quants']['trim2'] = get_counter_quantiles(trims2, order=QUANT_ORDER)
+    stats['quants']['trim'] = get_counter_quantiles(trims1 + trims2, order=QUANT_ORDER)
+    stats['quants']['omitted_trim1'] = get_counter_quantiles(omitted1, order=QUANT_ORDER)
+    stats['quants']['omitted_trim2'] = get_counter_quantiles(omitted2, order=QUANT_ORDER)
+    stats['quants']['omitted_trim'] = get_counter_quantiles(omitted1 + omitted2, order=QUANT_ORDER)
   else:
-    stats['med_trim'] = median_counted_item(trims1)
-    stats['med_omitted_trim'] = median_counted_item(omitted1)
+    stats['quants']['trim'] = get_counter_quantiles(trims1)
+    stats['quants']['omitted_trim'] = get_counter_quantiles(omitted1)
   return stats
 
 
@@ -254,73 +257,79 @@ def trim_seq(seq, win_len=1, thres=1.0, filt_bases='N', invert=False, **kwargs):
     return seq
 
 
-def median_counted_item(counter, average=True):
-  # Find the halfway point.
+def get_counter_quantiles(counter, order=5):
+  """Return an arbitrary set of quantiles (including min and max values).
+  `counter` is a collections.Counter.
+  `order` is which quantile to perform (4 = quartiles, 5 = quintiles).
+  Warning: This expects a counter which has counted at least `order` elements.
+  If it receives a counter with fewer elements, it will simply return `list(counter.elements())`.
+  This will have fewer than the usual order+1 elements, and may not fit normal expectations of
+  what "quantiles" should be."""
+  quantiles = []
   total = sum(counter.values())
-  odd = total % 2 == 1
-  halfway = math.ceil(total/2)
-  # Sort the items and go through them, looking for the one at the halfway point.
-  items = sorted(counter.items(), key=lambda i: i[0])
-  left = None
+  if total <= order:
+    return list(counter.elements())
+  span_size = total / order
+  # Sort the items and go through them, looking for the one at the break points.
+  items = list(sorted(counter.items(), key=lambda i: i[0]))
+  quantiles.append(items[0][0])
   total_seen = 0
+  current_span = 1
+  cut_point = int(round(current_span*span_size))
   for item, count in items:
     total_seen += count
-    if odd:
-      if total_seen >= halfway:
-        return item
-    else:
-      if total_seen == halfway:
-        if average:
-          left = item
-        else:
-          return item
-      elif total_seen > halfway:
-        if left is None:
-          return item
-        elif average:
-          try:
-            return (left+item)/2
-          except TypeError:
-            raise TypeError('Cannot average types {} ({!r}) and {} ({!r}).'
-                            .format(type(left).__name__, left, type(item).__name__, item))
-        else:
-          return item
+    if total_seen >= cut_point:
+      quantiles.append(item)
+      current_span += 1
+      cut_point = int(round(current_span*span_size))
+  return quantiles
 
 
 def print_stats(stats, format='human'):
-  # Replace any None's with 0's.
-  for key in list(stats.keys()):
-    if stats[key] is None:
-      stats[key] = 0
-  # Was this a paired-end run?
-  paired = 'med_trim2' in stats
   if format == 'human':
-    lines = [
-      'Total reads in input:\t{reads}',
-      'Reads filtered out:\t{omitted}'
-    ]
-    lines.append('Median bases trimmed:\t{med_trim}')
-    if paired:
-      lines.append('  For mate 1:\t{med_trim1}')
-      lines.append('  For mate 2:\t{med_trim2}')
-    if stats['med_omitted_trim'] is not None:
-      lines.append('Median bases trimmed from filtered reads:\t{med_omitted_trim}')
-      if paired:
-        lines.append('  For mate 1:\t{med_omitted_trim1}')
-        lines.append('  For mate 2:\t{med_omitted_trim2}')
+    lines = get_stats_lines_human(stats)
   elif format == 'tsv':
-    lines = [
-      '{reads}\t{omitted}'
-    ]
-    if paired:
-      lines.append('{med_trim}\t{med_trim1}\t{med_trim2}')
-      lines.append('{med_omitted_trim}\t{med_omitted_trim1}\t{med_omitted_trim2}')
-    else:
-      lines.append('{med_trim}')
-      lines.append('{med_omitted_trim}')
+    lines = get_stats_lines_tsv(stats)
   else:
     fail('Error: Unrecognized format {!r}'.format(format))
   sys.stderr.write('\n'.join(lines).format(**stats)+'\n')
+
+
+def get_stats_lines_human(stats):
+  lines = [
+    'Total reads in input:\t{reads}',
+    'Reads trimmed:\t{trimmed}'
+    'Reads filtered out:\t{omitted}'
+  ]
+  quantile_lines = [
+    ('Bases trimmed quintiles', 'trim'),
+    ('  For mate 1', 'trim1'),
+    ('  For mate 2', 'trim2'),
+    ('Bases trimmed quantiles from filtered reads', 'omitted_trim'),
+    ('  For mate 1', 'omitted_trim1'),
+    ('  For mate 2', 'omitted_trim2')
+  ]
+  for desc, stat_name in quantile_lines:
+    if stat_name in stats['quants']:
+      quants_values = stats['quants'][stat_name]
+      if quants_values:
+        quants_str = ', '.join(map(str, quants_values))
+      else:
+        quants_str = 'N/A'
+      line = desc+':\t'+quants_str
+      lines.append(line)
+  return lines
+
+
+def get_stats_lines_tsv(stats):
+  lines = [
+    '{reads}\t{trimmed}\t{omitted}'
+  ]
+  for stat_name in ('trim', 'trim1', 'trim2', 'omitted_trim', 'omitted_trim1', 'omitted_trim2'):
+    if stat_name in stats['quants']:
+      quants_values = stats['quants'][stat_name]
+      lines.append('\t'.join(map(str, quants_values)))
+  return lines
 
 
 def fail(message):
