@@ -17,6 +17,7 @@ bases masked."""
 def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
   parser.add_argument('input', metavar='align.fa', type=argparse.FileType('r'), default=sys.stdin,
+                      nargs='?',
     help='Aligned input sequences. Can be FASTA or just the plain sequences, one per line.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
