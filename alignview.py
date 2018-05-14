@@ -3,25 +3,38 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import unicode_literals
+import os
 import sys
 import errno
 import logging
 import argparse
 import collections
+import getreads
 assert sys.version_info.major >= 3, 'Python 3 required'
 
 DESCRIPTION = """Take an alignment and print a version with a consensus sequence and the conserved
 bases masked."""
 
+# The ascii values that represent a 0 PHRED score.
+QUAL_OFFSETS = {'sanger':33, 'solexa':64}
 
 def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
   parser.add_argument('input', metavar='align.fa', type=argparse.FileType('r'), default=sys.stdin,
                       nargs='?',
     help='Aligned input sequences. Can be FASTA or just the plain sequences, one per line.')
+  parser.add_argument('-f', '--format', choices=getreads.FORMATS,
+    help='Format of the input. Will be inferred from the filename if not given. "lines" is the most '
+         'basic format: Just the sequences, one per line.')
+  parser.add_argument('-q', '--qual-thres', type=int, default=25,
+    help='Quality score threshold. If quality scores are present, don\'t show bases with lower '
+         'quality scores than these. Default: %(default)s')
+  parser.add_argument('-F', '--qual-format', choices=QUAL_OFFSETS.keys(), default='sanger',
+    help='FASTQ quality score format. Sanger scores are assumed to begin at \'{}\' ({}). '
+         'Default: %(default)s.'.format(QUAL_OFFSETS['sanger'], chr(QUAL_OFFSETS['sanger'])))
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
-  parser.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
+  parser.add_argument('-Q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
     default=logging.WARNING)
   parser.add_argument('-v', '--verbose', dest='volume', action='store_const', const=logging.INFO)
   parser.add_argument('-D', '--debug', dest='volume', action='store_const', const=logging.DEBUG)
@@ -36,32 +49,57 @@ def main(argv):
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
   tone_down_logger()
 
-  seqs, seqlen = read_seqs(args.input)
+  if args.format:
+    format = args.format
+  else:
+    if args.input is sys.stdin:
+      fail('Error: Must give the --format if reading from stdin.')
+    ext = os.path.splitext(args.input.name)[1]
+    if ext == '.fq':
+      format = 'fastq'
+    elif ext == '.fa':
+      format = 'fasta'
+    else:
+      format = ext[1:]
 
-  masked_seqs, consensus = mask_seqs(seqs, seqlen)
+  seqs, quals, seqlen = read_seqs(args.input, format, args.qual_format)
+
+  masked_seqs, consensus = mask_seqs(seqs, quals, seqlen, args.qual_thres)
 
   print(consensus)
   for seq in masked_seqs:
     print(seq)
 
 
-def read_seqs(infile):
+def read_seqs(infile, format, qual_format):
   seqlen = None
   seqs = []
-  for line_raw in infile:
+  quals = []
+  for read in getreads.getparser(infile, format, qual_format=qual_format):
+    if seqlen is None:
+      seqlen = len(read.seq)
+    if seqlen != len(read.seq):
+      fail('Error: Line lengths not equal ({0} != {1})'.format(seqlen, len(read.seq)))
+    if read.qual and len(read.seq) != len(read.qual):
+      fail('Error: Sequence and quality scores not the same length.')
+    seqs.append(read.seq)
+    quals.append(read.scores)
+  return seqs, quals, seqlen
+
+
+def read_quals(infile, seqlen, offset):
+  all_quals = []
+  for line_num, line_raw in enumerate(infile):
     line = line_raw.rstrip('\r\n')
-    if line.startswith('>'):
-      continue
-    else:
-      if seqlen is None:
-        seqlen = len(line)
-      elif seqlen != len(line):
-        fail('Error: Line lengths not equal ({0} != {1})'.format(seqlen, len(line)))
-      seqs.append(line)
-  return seqs, seqlen
+    if len(line) != seqlen:
+      fail('Error: Quality scores on line {} are a different length than the input alignment '
+           '({} != {}).'.format(line_num+1, len(line), seqlen))
+    quals = [ord(qual) - offset for qual in line]
+    all_quals.append(quals)
+  return all_quals
 
 
-def mask_seqs(seqs, seqlen):
+def mask_seqs(seqs, quals, seqlen, qual_thres):
   mismatches = 0
   consensus = ''
   masked_seqs = [''] * len(seqs)
@@ -77,6 +115,11 @@ def mask_seqs(seqs, seqlen):
         cons_base = base
     consensus += cons_base
     for s in range(len(seqs)):
+      if quals:
+        q = quals[s][b]
+        if q < qual_thres:
+          masked_seqs[s] += ' '
+          continue
       if seqs[s][b] == cons_base:
         masked_seqs[s] += '.'
       else:
