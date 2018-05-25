@@ -111,20 +111,20 @@ def mask_seqs(seqs, quals, seqlen, qual_thres):
   for b in range(seqlen):
     votes = collections.defaultdict(int)
     for s in range(len(seqs)):
-      votes[seqs[s][b]] += 1
+      if good_quality(s, b, quals, qual_thres):
+        votes[seqs[s][b]] += 1
     max_vote = 0
     cons_base = 'N'
     for base, vote in votes.items():
-      if vote > max_vote:
+      # The consensus base must be in the majority (>50%) or no consensus.
+      if vote > max_vote and vote > len(seqs)*0.5:
         max_vote = vote
         cons_base = base
     consensus += cons_base
     for s in range(len(seqs)):
-      if quals and quals[s]:
-        q = quals[s][b]
-        if 0 <= q < qual_thres:
-          masked_seqs[s] += ' '
-          continue
+      if not good_quality(s, b, quals, qual_thres):
+        masked_seqs[s] += ' '
+        continue
       if seqs[s][b] == cons_base:
         masked_seqs[s] += '.'
       else:
@@ -132,6 +132,14 @@ def mask_seqs(seqs, quals, seqlen, qual_thres):
         masked_seqs[s] += seqs[s][b]
   logging.info('{} mismatches'.format(mismatches))
   return masked_seqs, consensus
+
+
+def good_quality(s, b, quals, qual_thres):
+  if quals and quals[s]:
+    q = quals[s][b]
+    if 0 <= q < qual_thres:
+      return False
+  return True
 
 
 def tone_down_logger():
