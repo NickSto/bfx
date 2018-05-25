@@ -32,6 +32,10 @@ def make_argparser():
   parser.add_argument('-F', '--qual-format', choices=QUAL_OFFSETS.keys(), default='sanger',
     help='FASTQ quality score format. Sanger scores are assumed to begin at \'{}\' ({}). '
          'Default: %(default)s.'.format(QUAL_OFFSETS['sanger'], chr(QUAL_OFFSETS['sanger'])))
+  parser.add_argument('-c', '--cons-thres', type=float,
+    help='The threshold for calling a consensus base. More than this fraction of bases must agree '
+         'in order to use the plurality vote as the consensus. E.g. give 0.5 to require a majority. '
+         'Default: there is no threshold. The plurality base will be used.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   parser.add_argument('-Q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
@@ -67,7 +71,7 @@ def main(argv):
   if len(seqs) == 0 or len(quals) == 0:
     fail('Error: No sequences found.')
 
-  masked_seqs, consensus = mask_seqs(seqs, quals, seqlen, args.qual_thres)
+  masked_seqs, consensus = mask_seqs(seqs, quals, seqlen, args.qual_thres, args.cons_thres)
 
   print(consensus)
   for seq in masked_seqs:
@@ -104,7 +108,7 @@ def read_quals(infile, seqlen, offset):
   return all_quals
 
 
-def mask_seqs(seqs, quals, seqlen, qual_thres):
+def mask_seqs(seqs, quals, seqlen, qual_thres, cons_thres):
   mismatches = 0
   consensus = ''
   masked_seqs = [''] * len(seqs)
@@ -117,7 +121,7 @@ def mask_seqs(seqs, quals, seqlen, qual_thres):
     cons_base = 'N'
     for base, vote in votes.items():
       # The consensus base must be in the majority (>50%) or no consensus.
-      if vote > max_vote and vote > len(seqs)*0.5:
+      if vote > max_vote and (cons_thres is None or vote > len(seqs)*cons_thres):
         max_vote = vote
         cons_base = base
     consensus += cons_base
