@@ -64,6 +64,9 @@ def main(argv):
 
   seqs, quals, seqlen = read_seqs(args.input, format, args.qual_format)
 
+  if len(seqs) == 0 or len(quals) == 0:
+    fail('Error: No sequences found.')
+
   masked_seqs, consensus = mask_seqs(seqs, quals, seqlen, args.qual_thres)
 
   print(consensus)
@@ -76,6 +79,8 @@ def read_seqs(infile, format, qual_format):
   seqs = []
   quals = []
   for read in getreads.getparser(infile, format, qual_format=qual_format):
+    if not read.seq:
+      continue
     if seqlen is None:
       seqlen = len(read.seq)
     if seqlen != len(read.seq):
@@ -115,9 +120,9 @@ def mask_seqs(seqs, quals, seqlen, qual_thres):
         cons_base = base
     consensus += cons_base
     for s in range(len(seqs)):
-      if quals:
+      if quals and quals[s]:
         q = quals[s][b]
-        if q < qual_thres:
+        if 0 <= q < qual_thres:
           masked_seqs[s] += ' '
           continue
       if seqs[s][b] == cons_base:
