@@ -1,4 +1,5 @@
 import os
+import logging
 """A simple parser for FASTA, FASTQ, SAM, etc. Create generators that just return the read name and
 sequence.
 All format parsers follow this API:
@@ -174,7 +175,7 @@ class FastaReader(Reader):
           if read.seq:
             yield read
           return
-        line = line_raw.strip()
+        line = line_raw.rstrip('\r\n')
         # Allow empty lines.
         if not line:
           continue
@@ -202,20 +203,22 @@ class FastqReader(Reader):
       filehandle = self.input
     try:
       read = Read(qual_format=self.qual_format)
+      line_num = 0
       state = 'header'
       while True:
         line_raw = filehandle.readline()
+        line_num += 1
         if not line_raw:
           if read.seq:
             yield read
           return
-        line = line_raw.strip()
+        line = line_raw.rstrip('\r\n')
         # Allow empty lines.
         if not line:
           continue
         if state == 'header':
           if not line.startswith('@'):
-            raise FormatError('line state = "header" but line does not start with "@"')
+            raise FormatError('line state = "header" but line does not start with "@":\n'+line)
           if read.seq:
             yield read
           read = Read()
@@ -229,6 +232,10 @@ class FastqReader(Reader):
           else:
             read.seq += line
         elif state == 'plus' or state == 'quality':
+          if state == 'quality' and line.startswith('@'):
+            logging.warning('Looking for more quality scores but line starts with "@". This might '
+                            'be a header line and there were fewer quality scores than bases: {}'
+                            .format(line[:69]))
           state = 'quality'
           togo = len(read.seq) - len(read.qual)
           read.qual += line[:togo]
