@@ -83,15 +83,17 @@ class Reader(object):
     for read in self.parser():
       for base in read.seq:
         yield base
+  def get_filehandle(self):
+    if self.input_type == 'path':
+      return open(self.input)
+    elif self.input_type == 'file':
+      return self.input
 
 
 class LineReader(Reader):
   """A parser for the simplest format: Only the sequence, one line per read."""
   def parser(self):
-    if self.input_type == 'path':
-      filehandle = open(self.input)
-    elif self.input_type == 'file':
-      filehandle = self.input
+    filehandle = self.get_filehandle()
     try:
       for line in filehandle:
         read = Read(seq=line.rstrip('\r\n'))
@@ -107,10 +109,7 @@ class TsvReader(Reader):
   Column 2: sequence
   Column 3: quality scores (optional)"""
   def parser(self):
-    if self.input_type == 'path':
-      filehandle = open(self.input)
-    elif self.input_type == 'file':
-      filehandle = self.input
+    filehandle = self.get_filehandle()
     try:
       for line in filehandle:
         fields = line.rstrip('\r\n').split('\t')
@@ -136,10 +135,7 @@ class SamReader(Reader):
   All alignment lines have 11 or more fields. Other lines will be skipped.
   """
   def parser(self):
-    if self.input_type == 'path':
-      filehandle = open(self.input)
-    elif self.input_type == 'file':
-      filehandle = self.input
+    filehandle = self.get_filehandle()
     try:
       for line in filehandle:
         fields = line.split('\t')
@@ -163,10 +159,7 @@ class SamReader(Reader):
 class FastaReader(Reader):
   """A simple FASTA parser that reads one sequence at a time into memory."""
   def parser(self):
-    if self.input_type == 'path':
-      filehandle = open(self.input)
-    elif self.input_type == 'file':
-      filehandle = self.input
+    filehandle = self.get_filehandle()
     try:
       read = Read()
       while True:
@@ -197,10 +190,7 @@ class FastaReader(Reader):
 class FastqReader(Reader):
   """A simple FASTQ parser. Can handle multi-line sequences, though."""
   def parser(self):
-    if self.input_type == 'path':
-      filehandle = open(self.input)
-    elif self.input_type == 'file':
-      filehandle = self.input
+    filehandle = self.get_filehandle()
     try:
       read = Read(qual_format=self.qual_format)
       line_num = 0
