@@ -17,6 +17,8 @@ bases masked."""
 
 # The ascii values that represent a 0 PHRED score.
 QUAL_OFFSETS = {'sanger':33, 'solexa':64}
+DEFAULT_SEQ_COLUMN = 2
+DEFAULT_QUAL_COLUMN = 3
 
 def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
@@ -26,6 +28,12 @@ def make_argparser():
   parser.add_argument('-f', '--format', choices=getreads.FORMATS,
     help='Format of the input. Will be inferred from the filename if not given. "lines" is the most '
          'basic format: Just the sequences, one per line.')
+  parser.add_argument('-S', '--seq-column', type=int,
+    help='For tsv (tab-delimited) input, this column contains the sequence data (1-indexed). '
+         'Default: '+str(DEFAULT_SEQ_COLUMN))
+  parser.add_argument('-Q', '--qual-column', type=int,
+    help='For tsv (tab-delimited) input, this column contains the quality scores (1-indexed). '
+         'Default: '+str(DEFAULT_QUAL_COLUMN))
   parser.add_argument('-q', '--qual-thres', type=int, default=25,
     help='Quality score threshold. If quality scores are present, don\'t show bases with lower '
          'quality scores than these. Default: %(default)s')
@@ -38,7 +46,7 @@ def make_argparser():
          'Default: there is no threshold. The plurality base will be used.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
-  parser.add_argument('-Q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
+  parser.add_argument('-s', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
     default=logging.WARNING)
   parser.add_argument('-v', '--verbose', dest='volume', action='store_const', const=logging.INFO)
   parser.add_argument('-D', '--debug', dest='volume', action='store_const', const=logging.DEBUG)
@@ -66,7 +74,17 @@ def main(argv):
     else:
       format = ext[1:]
 
-  seqs, quals, seqlen = read_seqs(args.input, format, args.qual_format)
+  seq_col = DEFAULT_SEQ_COLUMN
+  qual_col = DEFAULT_QUAL_COLUMN
+  if args.seq_column or args.qual_column:
+    if format != 'tsv':
+      fail('Error: --seq-column and --qual-column can only be used with tsv format.')
+    if args.seq_column:
+      seq_col = args.seq_column
+    if args.qual_column:
+      qual_col = args.qual_column
+
+  seqs, quals, seqlen = read_seqs(args.input, format, args.qual_format, seq_col, qual_col)
 
   if len(seqs) == 0 or len(quals) == 0:
     fail('Error: No sequences found.')
@@ -78,11 +96,12 @@ def main(argv):
     print(seq)
 
 
-def read_seqs(infile, format, qual_format):
+def read_seqs(infile, format, qual_format, seq_col, qual_col):
   seqlen = None
   seqs = []
   quals = []
-  for read in getreads.getparser(infile, format, qual_format=qual_format):
+  for read in getreads.getparser(infile, format, qual_format=qual_format,
+                                 seq_col=seq_col, qual_col=qual_col):
     if not read.seq:
       continue
     if seqlen is None:
