@@ -20,7 +20,7 @@ FORMATS = ('fasta', 'fastq', 'sam', 'tsv', 'lines')
 QUAL_OFFSETS = {'sanger':33, 'solexa':64}
 
 
-def getparser(input, filetype, qual_format='sanger'):
+def getparser(input, filetype, qual_format='sanger', name_col=1, seq_col=2, qual_col=3):
   # Detect whether the input is an open file or a path.
   # Return the appropriate reader.
   if filetype == 'fasta':
@@ -30,7 +30,8 @@ def getparser(input, filetype, qual_format='sanger'):
   elif filetype == 'sam':
     return SamReader(input)
   elif filetype == 'tsv':
-    return TsvReader(input)
+    return TsvReader(input, qual_format=qual_format,
+                     name_col=name_col, seq_col=seq_col, qual_col=qual_col)
   elif filetype == 'lines':
     return LineReader(input)
   else:
@@ -71,12 +72,13 @@ class Read(object):
 
 class Reader(object):
   """Base class for all other parsers."""
-  def __init__(self, input, qual_format='sanger'):
+  def __init__(self, input, **kwargs):
     self.input = input
     self.input_type = detect_input_type(input)
     if self.input_type not in ('path', 'file'):
       raise ValueError('Input object {!r} not file-like or string-like.'.format(input))
-    self.qual_format = qual_format
+    for key, value in kwargs.items():
+      setattr(self, key, value)
   def __iter__(self):
     return self.parser()
   def bases(self):
@@ -109,19 +111,20 @@ class TsvReader(Reader):
   Column 2: sequence
   Column 3: quality scores (optional)"""
   def parser(self):
+    min_fields = max(self.name_col, self.seq_col)
     filehandle = self.get_filehandle()
     try:
       for line in filehandle:
         fields = line.rstrip('\r\n').split('\t')
-        if len(fields) < 2:
+        if len(fields) < min_fields:
           continue
         read = Read(qual_format=self.qual_format)
-        read.name = fields[0]
+        read.name = fields[self.name_col-1]
         if read.name:
           read.id = read.name.split()[0]
-        read.seq = fields[1]
-        if len(fields) >= 3:
-          read.qual = fields[2]
+        read.seq = fields[self.seq_col-1]
+        if len(fields) >= self.seq_col:
+          read.qual = fields[self.qual_col-1]
         yield read
     finally:
       if self.input_type == 'path':
