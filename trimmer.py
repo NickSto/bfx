@@ -38,10 +38,11 @@ def make_argparser():
     help='Window size for trimming. Default: %(default)s.')
   parser.add_argument('-i', '--invert', action='store_true',
     help='Invert the filter bases: filter on bases NOT present in the --filt-bases.')
-  parser.add_argument('-m', '--min-length', type=int,
+  parser.add_argument('-m', '--min-length', type=int, default=1,
     help='Set a minimum read length. Reads which are trimmed below this length will be filtered '
          'out (omitted entirely from the output). Read pairs will be preserved: both reads in a '
-         'pair must exceed this length to be kept. Set to 0 to only omit empty reads.')
+         'pair must exceed this length to be kept. Set to 1 to only omit empty reads. '
+         'Default: %(default)s.')
   parser.add_argument('-A', '--acgt', action='store_true',
     help='Filter on any non-ACGT base (shortcut for "--invert --filt-bases ACGT").')
   parser.add_argument('-I', '--iupac', action='store_true',
