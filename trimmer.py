@@ -7,17 +7,13 @@ import collections
 import getreads
 
 QUANT_ORDER = 5
-OPT_DEFAULTS = {'win_len':1, 'thres':0.5, 'filt_bases':'N', 'stats_format':'human'}
 USAGE = "%(prog)s [options] [input_1.fq [input_2.fq output_1.fq output_2.fq]]"
 DESCRIPTION = """Trim the 5' ends of reads by sequence content, e.g. by GC content or presence of
 N's."""
 
 
-def main(argv):
-
+def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION, usage=USAGE)
-  parser.set_defaults(**OPT_DEFAULTS)
-
   parser.add_argument('infile1', metavar='reads_1.fq', nargs='?', type=argparse.FileType('r'),
     default=sys.stdin,
     help='Input reads (mate 1). Omit to read from stdin.')
@@ -33,12 +29,12 @@ def main(argv):
     help='Input read format.')
   parser.add_argument('-F', '--out-format', dest='out_filetype', choices=('fasta', 'fastq'),
     help='Output read format. Default: whatever the input format is.')
-  parser.add_argument('-b', '--filt-bases',
+  parser.add_argument('-b', '--filt-bases', default='N',
     help='The bases to filter on. Case-insensitive. Default: %(default)s.')
-  parser.add_argument('-t', '--thres', type=float,
+  parser.add_argument('-t', '--thres', type=float, default=0.5,
     help='The threshold. The read will be trimmed once the proportion of filter bases in the '
          'window exceed this fraction (not a percentage). Default: %(default)s.')
-  parser.add_argument('-w', '--window', dest='win_len', type=int,
+  parser.add_argument('-w', '--window', dest='win_len', type=int, default=1,
     help='Window size for trimming. Default: %(default)s.')
   parser.add_argument('-i', '--invert', action='store_true',
     help='Invert the filter bases: filter on bases NOT present in the --filt-bases.')
@@ -46,20 +42,20 @@ def main(argv):
     help='Set a minimum read length. Reads which are trimmed below this length will be filtered '
          'out (omitted entirely from the output). Read pairs will be preserved: both reads in a '
          'pair must exceed this length to be kept. Set to 0 to only omit empty reads.')
-  parser.add_argument('--error',
-    help='Fail with this error message (useful for Galaxy tool).')
   parser.add_argument('-A', '--acgt', action='store_true',
     help='Filter on any non-ACGT base (shortcut for "--invert --filt-bases ACGT").')
   parser.add_argument('-I', '--iupac', action='store_true',
     help='Filter on any non-IUPAC base (shortcut for "--invert --filt-bases ACGTUWSMKRYBDHVN-").')
   parser.add_argument('-q', '--quiet', action='store_true',
     help='Don\'t print trimming stats on completion.')
-  parser.add_argument('-T', '--tsv', dest='stats_format', action='store_const', const='tsv')
+  parser.add_argument('-T', '--tsv', dest='stats_format', default='human',
+                      action='store_const', const='tsv')
+  return parser
 
+
+def main(argv):
+  parser = make_argparser()
   args = parser.parse_args(argv[1:])
-
-  if args.error:
-    fail('Error: '+args.error)
 
   # Catch invalid argument combinations.
   if args.infile1 and args.infile2 and not (args.outfile1 and args.outfile2):
