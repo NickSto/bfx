@@ -145,6 +145,11 @@ def trim_reads(file1_parser, file2_parser, outfile1, outfile2, filetype1, filety
   stats['reads'] = sum(trims1.values()) + sum(trims2.values())
   stats['trimmed'] = stats['reads'] - trims1[0] - trims2[0]
   stats['omitted'] = sum(omitted1.values()) + sum(omitted2.values())
+  if paired:
+    stats['trimmed1'] = stats['reads']//2 - trims1[0]
+    stats['trimmed2'] = stats['reads']//2 - trims2[0]
+    stats['omitted1'] = sum(omitted1.values())
+    stats['omitted2'] = sum(omitted2.values())
   # Quintiles for trim lengths.
   stats['quants'] = {'order':QUANT_ORDER}
   if paired:
@@ -292,11 +297,19 @@ def print_stats(stats, format='human'):
 
 
 def get_stats_lines_human(stats):
+  # Single-stat lines:
   lines = [
     'Total reads in input:\t{reads}',
     'Reads trimmed:\t{trimmed}'
-    'Reads filtered out:\t{omitted}'
   ]
+  if 'trimmed1' in stats and 'trimmed2' in stats:
+    lines.append('  For mate 1:\t{trimmed1}')
+    lines.append('  For mate 2:\t{trimmed2}')
+  lines.append('Reads filtered out:\t{omitted}')
+  if 'omitted1' in stats and 'omitted2' in stats:
+    lines.append('  For mate 1:\t{omitted1}')
+    lines.append('  For mate 2:\t{omitted2}')
+  # Quantile lines:
   quantile_lines = [
     ('Bases trimmed quintiles', 'trim'),
     ('  For mate 1', 'trim1'),
@@ -318,9 +331,15 @@ def get_stats_lines_human(stats):
 
 
 def get_stats_lines_tsv(stats):
-  lines = [
-    '{reads}\t{trimmed}\t{omitted}'
-  ]
+  lines = ['{reads}']
+  if 'trimmed1' in stats and 'trimmed2' in stats:
+    lines.append('{trimmed}\t{trimmed1}\t{trimmed2}')
+  else:
+    lines.append('{trimmed}')
+  if 'omitted1' in stats and 'omitted2' in stats:
+    lines.append('{omitted}\t{omitted1}\t{omitted2}')
+  else:
+    lines.append('{omitted}')
   for stat_name in ('trim', 'trim1', 'trim2', 'omitted_trim', 'omitted_trim1', 'omitted_trim2'):
     if stat_name in stats['quants']:
       quants_values = stats['quants'][stat_name]
