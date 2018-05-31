@@ -123,8 +123,10 @@ class TsvReader(Reader):
         if read.name:
           read.id = read.name.split()[0]
         read.seq = fields[self.seq_col-1]
-        if len(fields) >= self.seq_col:
+        try:
           read.qual = fields[self.qual_col-1]
+        except (TypeError, IndexError):
+          pass
         yield read
     finally:
       if self.input_type == 'path':
