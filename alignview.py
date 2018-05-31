@@ -30,6 +30,8 @@ def make_argparser():
          'basic format: Just the sequences, one per line.')
   parser.add_argument('-S', '--seq-column', type=int,
     help='For tsv (tab-delimited) input, this column contains the sequence data (1-indexed). '
+         'If you specify this manually without specifying --qual-column, it will assume there are '
+         'no quality scores. '
          'Default: '+str(DEFAULT_SEQ_COLUMN))
   parser.add_argument('-Q', '--qual-column', type=int,
     help='For tsv (tab-delimited) input, this column contains the quality scores (1-indexed). '
@@ -83,6 +85,8 @@ def main(argv):
       seq_col = args.seq_column
     if args.qual_column:
       qual_col = args.qual_column
+    else:
+      qual_col = None
 
   seqs, quals, seqlen = read_seqs(args.input, format, args.qual_format, seq_col, qual_col)
 
