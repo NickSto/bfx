@@ -25,7 +25,7 @@ def make_argparser():
   parser.add_argument('input', metavar='align.fa', type=argparse.FileType('r'), default=sys.stdin,
                       nargs='?',
     help='Aligned input sequences. Can be FASTA or just the plain sequences, one per line.')
-  parser.add_argument('-f', '--format', choices=getreads.FORMATS,
+  parser.add_argument('-f', '--format', choices=list(getreads.FORMATS)+['msa'],
     help='Format of the input. Will be inferred from the filename if not given. "lines" is the most '
          'basic format: Just the sequences, one per line.')
   parser.add_argument('-S', '--seq-column', type=int,
@@ -63,8 +63,13 @@ def main(argv):
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
   tone_down_logger()
 
+  special_format = None
   if args.format:
-    format = args.format
+    if args.format == 'msa':
+      special_format = args.format
+      format = 'tsv'
+    else:
+      format = args.format
   else:
     if args.input is sys.stdin:
       fail('Error: Must give the --format if reading from stdin.')
@@ -78,6 +83,9 @@ def main(argv):
 
   seq_col = DEFAULT_SEQ_COLUMN
   qual_col = DEFAULT_QUAL_COLUMN
+  if special_format == 'msa':
+    seq_col = 5
+    qual_col = 6
   if args.seq_column or args.qual_column:
     if format != 'tsv':
       fail('Error: --seq-column and --qual-column can only be used with tsv format.')
