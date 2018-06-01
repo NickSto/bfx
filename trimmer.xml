@@ -1,27 +1,31 @@
-<tool id="sequence_content_trimmer" version="0.1" name="Sequence Content Trimmer">
+<?xml version="1.0"?>
+<tool id="sequence_content_trimmer" version="0.2" name="Sequence Content Trimmer">
   <description>trim reads based on certain bases</description>
-  <command interpreter="python">
-  trimmer.py $input1
-  #if $paired.is_paired:
-    $input2 $output1 $output2
-    #if ('fasta' in $input1.extension and 'fastq' in $input2.extension) or ('fastq' in $input1.extension and 'fasta' in $input2.extension)
-      --error 'Both input files must be either fastq or fasta (no mixing the two).'
+  <command interpreter="python"><![CDATA[
+  #if $paired.is_paired and (('fasta' in $input1.extension and 'fastq' in $input2.extension) or \
+      ('fastq' in $input1.extension and 'fasta' in $input2.extension))
+    echo 'Both input files must be either fastq or fasta (no mixing the two).' >&2
+  #else
+    trimmer.py $input1
+    #if $paired.is_paired:
+      $input2 $output1 $output2
+    #end if
+    #if $input1.extension in ('fastq', 'fastqsanger', 'fastqillumina', 'fastqsolexa')
+      -f fastq
+    #elif $input1.extension == 'fasta'
+      -f fasta
+    #else
+      -f $input1.extension
+    #end if
+    -b $bases -t $thres -w $win_len $invert
+    #if $min_len.has_min_len:
+      -m $min_len.value
+    #end if
+    #if not $paired.is_paired:
+      > $output1
     #end if
   #end if
-  #if $input1.extension == 'fastq' or $input1.extension == 'fastqsanger' or $input1.extension == 'fastqillumina' or $input1.extension == 'fastqsolexa'
-    -f fastq
-  #elif $input1.extension == 'fasta'
-    -f fasta
-  #else
-    -f $input1.extension
-  #end if
-  -b $bases -t $thres -w $win_len $invert
-  #if $min_len.has_min_len:
-    -m $min_len.value
-  #end if
-  #if not $paired.is_paired:
-    &gt; $output1
-  #end if
+  ]]>
   </command>
   <inputs>
     <conditional name="paired">
