@@ -20,10 +20,10 @@ def make_argparser():
   parser.add_argument('infile2', metavar='reads_2.fq', nargs='?', type=argparse.FileType('r'),
     help='Input reads (mate 2). If given, it will preserve pairs (if one read is filtered out '
          'entirely, the other will also be lost).')
-  parser.add_argument('outfile1', metavar='reads.filt_1.fq', nargs='?', type=argparse.FileType('w'),
+  parser.add_argument('outfile1', metavar='output_1.fq', nargs='?', type=argparse.FileType('w'),
     default=sys.stdout,
     help='Output file for mate 1. WARNING: Will overwrite.')
-  parser.add_argument('outfile2', metavar='reads.filt_2.fq', nargs='?', type=argparse.FileType('w'),
+  parser.add_argument('outfile2', metavar='output_2.fq', nargs='?', type=argparse.FileType('w'),
     help='Output file for mate 2. WARNING: Will overwrite.')
   parser.add_argument('-f', '--format', dest='filetype', choices=('fasta', 'fastq'),
     help='Input read format.')
@@ -315,7 +315,7 @@ def get_stats_lines_human(stats):
     ('Bases trimmed quintiles', 'trim'),
     ('  For mate 1', 'trim1'),
     ('  For mate 2', 'trim2'),
-    ('Bases trimmed quantiles from filtered reads', 'omitted_trim'),
+    ('Bases trimmed quintiles from filtered reads', 'omitted_trim'),
     ('  For mate 1', 'omitted_trim1'),
     ('  For mate 2', 'omitted_trim2')
   ]
