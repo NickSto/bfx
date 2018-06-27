@@ -174,9 +174,6 @@ class FastaReader(Reader):
             yield read
           return
         line = line_raw.rstrip('\r\n')
-        # Allow empty lines.
-        if not line:
-          continue
         if line.startswith('>'):
           if read.seq:
             yield read
@@ -208,12 +205,13 @@ class FastqReader(Reader):
             yield read
           return
         line = line_raw.rstrip('\r\n')
-        # Allow empty lines.
-        if not line:
-          continue
         if state == 'header':
           if not line.startswith('@'):
-            raise FormatError('line state = "header" but line does not start with "@":\n'+line)
+            if line:
+              raise FormatError('line state = "header" but line does not start with "@":\n'+line)
+            else:
+              # Allow empty lines.
+              continue
           if read.seq:
             yield read
           read = Read()
@@ -227,7 +225,7 @@ class FastqReader(Reader):
           else:
             read.seq += line
         elif state == 'plus' or state == 'quality':
-          if state == 'quality' and line.startswith('@'):
+          if line.startswith('@') and state == 'quality':
             logging.warning('Looking for more quality scores but line starts with "@". This might '
                             'be a header line and there were fewer quality scores than bases: {}'
                             .format(line[:69]))
