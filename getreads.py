@@ -169,16 +169,16 @@ class FastaReader(Reader):
   def parser(self):
     filehandle = self.get_filehandle()
     try:
-      read = Read()
+      read = None
       while True:
         line_raw = filehandle.readline()
         if not line_raw:
-          if read.seq:
+          if read is not None:
             yield read
           return
         line = line_raw.rstrip('\r\n')
         if line.startswith('>'):
-          if read.seq:
+          if read is not None:
             yield read
           read = Read()
           read.name = line[1:]  # remove ">"
@@ -197,14 +197,14 @@ class FastqReader(Reader):
   def parser(self):
     filehandle = self.get_filehandle()
     try:
-      read = Read(qual_format=self.qual_format)
+      read = None
       line_num = 0
       state = 'header'
       while True:
         line_raw = filehandle.readline()
         line_num += 1
         if not line_raw:
-          if read.seq:
+          if read is not None:
             yield read
           return
         line = line_raw.rstrip('\r\n')
@@ -215,9 +215,9 @@ class FastqReader(Reader):
             else:
               # Allow empty lines.
               continue
-          if read.seq:
+          if read is not None:
             yield read
-          read = Read()
+          read = Read(qual_format=self.qual_format)
           read.name = line[1:]  # remove '@'
           if read.name:
             read.id = read.name.split()[0]
