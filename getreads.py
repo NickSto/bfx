@@ -1,5 +1,8 @@
-import os
+#!/usr/bin/env python3
+import argparse
 import logging
+import os
+import sys
 """A simple parser for FASTA, FASTQ, SAM, etc. Create generators that just return the read name and
 sequence.
 All format parsers follow this API:
@@ -238,3 +241,48 @@ class FastqReader(Reader):
     finally:
       if self.input_type == 'path':
         filehandle.close()
+
+
+DESCRIPTION = 'Test parser by parsing an input file and printing its contents.'
+
+
+def make_argparser():
+  parser = argparse.ArgumentParser(description=DESCRIPTION)
+  parser.add_argument('infile', nargs='?', type=argparse.FileType('r'), default=sys.stdin,
+    help='Input reads.')
+  parser.add_argument('-f', '--format', choices=('fasta', 'fastq', 'sam', 'tsv', 'lines'),
+    help='Input read format. Will be detected from the filename, if given.')
+  return parser
+
+
+def main(argv):
+  parser = make_argparser()
+  args = parser.parse_args(argv[1:])
+  if args.format:
+    format = args.format
+  elif args.infile is sys.stdin:
+    fail('Error: Must give a --format if reading from stdin.')
+  else:
+    ext = os.path.splitext(args.infile.name)[1]
+    if ext == '.fq':
+      format = 'fastq'
+    elif ext == '.fa':
+      format = 'fasta'
+    elif ext == '.txt':
+      format = 'lines'
+    else:
+      format = ext[1:]
+  print('Reading input as format "{}".'.format(format))
+  for i, read in enumerate(getparser(args.infile, filetype=format)):
+    print('Read {} id/name: "{}"/"{}"'.format(i+1, read.id, read.name))
+    print('Read {} seq:  "{}"'.format(i+1, read.seq))
+    print('Read {} qual: "{}"'.format(i+1, read.qual))
+
+
+def fail(message):
+  sys.stderr.write(message+"\n")
+  sys.exit(1)
+
+
+if __name__ == '__main__':
+  sys.exit(main(sys.argv))
