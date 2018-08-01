@@ -159,8 +159,8 @@ int main(int argc, char *argv[]) {
   }
 
   if (get_extremes) {
-    fprintf(stderr, "Minimum quality score ascii value: %d (%c)\n", extremes.min, (char)extremes.min);
-    fprintf(stderr, "Maximum quality score ascii value: %d (%c)\n", extremes.max, (char)extremes.max);
+    fprintf(stderr, "Quality score ascii range: %d (%c) to %d (%c)\n",
+            extremes.min, (char)extremes.min, extremes.max, (char)extremes.max);
   }
   printf("%ld\n", num_reads);
 
