@@ -15,14 +15,17 @@ const char *USAGE = "Usage: $ readsfq [options] reads.fq\n"
 "This will count the number of reads in a FASTQ file, giving an accurate count\n"
 "even for files with multi-line reads.\n"
 "Options:\n"
-"-B [buffer size]: Specify a file reading buffer size, in bytes. Default: 65535";
+"-B [buffer_size]: Specify a file reading buffer size, in bytes. Default: 65535\n"
+"                  WARNING: Lines longer than this will end up truncated.";
 
+int line_is_empty(char *line);
 void die(const char *message, ...);
 int is_int(const char *int_str);
+long count_chars(char *buffer, size_t buffer_size);
 
 //TODO: bool
 typedef enum {
-  FIRST, NAME, SEQ, PLUS, QUAL
+  HEADER, SEQ, PLUS, QUAL
 } State;
 
 int main(int argc, char *argv[]) {
@@ -55,74 +58,111 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  char *buffer = malloc(buffer_size);
+  /*TODO: This assumes that there will be at least as many quality scores as there are sequence
+   *      bases. According to Dan, we can't make that assumption.
+   *      Then what do we do to tell when the quality lines have ended?
+   *      Ideas for disambiguating:
+   *      1. If len(qual) >= len(seq), it's a NAME (If we've already seen enough
+   *         quality values to cover the read, the QUAL lines must be over.)
+   *      2. If the line plus the observed quality values so far is longer than the
+   *         read, it must be a NAME line.
+   *      3. No FASTQ format uses space characters for quality scores, according to
+   *         Wikipedia. If there's a space character in the line, say it's a NAME line?
+   *      But there could still conceivably be a read with truncated quality scores,
+   *      followed by a NAME line that contains no spaces and is short enough to not
+   *      exceed the read length.
+   *      Conclusion: Just check how BioPython does it:
+   *      http://biopython.org/DIST/docs/api/Bio.SeqIO.QualityIO-pysrc.html
+   */
 
-  int num_reads = 0;
-  State line_type = FIRST;
-  short first_char = 1;
-  //TODO: fgets() reads a line at a time.
-  size_t bytes_read = fread(buffer, 1, buffer_size, infile);
-  while (bytes_read) {
-    char chr;
-    int i;
-    for (i = 0; i < bytes_read; i++) {
-      chr = buffer[i];
-      if (chr == '\n' || chr == '\r') {
-        first_char = 1;
-      } else if (first_char) {
-        switch (chr) {
-          case '@':
-            if (line_type == FIRST || line_type == QUAL) {
-              /*TODO: Pretty sure this is wrong. If the line after a QUAL line starts with a '@',
-               *      it could be either another QUAL line or a NAME line. According to Dan, we
-               *      can't assume the quality scores are as long as the sequence, since the quality
-               *      scores can be truncated.
-               *      Ideas for disambiguating:
-               *      1. If len(qual) >= len(seq), it's a NAME (If we've already seen enough
-               *         quality values to cover the read, the QUAL lines must be over.)
-               *      2. If the line plus the observed quality values so far is longer than the
-               *         read, it must be a NAME line.
-               *      3. No FASTQ format uses space characters for quality scores, according to
-               *         Wikipedia. If there's a space character in the line, say it's a NAME line?
-               *      But there could still conceivably be a read with truncated quality scores,
-               *      followed by a NAME line that contains no spaces and is short enough to not
-               *      exceed the read length.
-               *      Conclusion: Just check how BioPython does it:
-               *      http://biopython.org/DIST/docs/api/Bio.SeqIO.QualityIO-pysrc.html
-               */
-              num_reads++;
-              line_type = NAME;
-            // '@' is a valid quality character
-            } else if (line_type == PLUS) {
-              line_type = QUAL;
-            }
-            break;
-          case '+':
-            if (line_type == SEQ) {
-              line_type = PLUS;
-            // '+' is a valid quality character
-            } else if (line_type == PLUS) {
-              line_type = QUAL;
-            }
-            break;
-          default:
-            if (line_type == NAME) {
-              line_type = SEQ;
-            } else if (line_type == PLUS) {
-              line_type = QUAL;
-            }
+  char *line = malloc(buffer_size);
+
+  long num_reads = 0;
+  long seq_len = 0;
+  long qual_len = 0;
+  State state = HEADER;
+  // fgets() reads a line at a time.
+  char *result = fgets(line, buffer_size, infile);
+  long line_num = 0;
+  while (result != NULL) {
+    line_num++;
+    if (state == HEADER) {
+      // Allow empty lines before the header.
+      if (! line_is_empty(line)) {
+        if (line[0] != '@') {
+          die("Line %ld looked like a header line but does not start with \"@\".", line_num);
         }
-        first_char = 0;
+        num_reads++;
+        seq_len = 0;
+        state = SEQ;
+      }
+    } else if (state == SEQ) {
+      if (line[0] == '+') {
+        qual_len = 0;
+        state = PLUS;
+      } else {
+        seq_len += count_chars(line, buffer_size);
+      }
+    } else if (state == PLUS || state == QUAL) {
+      if (state == QUAL && line[0] == '@') {
+        fprintf(stderr, "Warning: Looking for more quality scores on line %ld but it starts with "
+                        "\"@\".\nThis might be a header line and there were fewer quality scores "
+                        "than bases.\n", line_num);
+      }
+      state = QUAL;
+      qual_len += count_chars(line, buffer_size);
+      if (qual_len >= seq_len) {
+        state = HEADER;
+        if (qual_len > seq_len) {
+          fprintf(stderr, "Warning on line %ld: Counted more quality scores than bases.\n", line_num);
+        }
       }
     }
-
-    bytes_read = fread(buffer, 1, buffer_size, infile);
+    result = fgets(line, buffer_size, infile);
   }
 
-  printf("%d\n", num_reads);
+  printf("%ld\n", num_reads);
 
   fclose(infile);
   return 0;
+}
+
+
+int line_is_empty(char *line) {
+  switch (line[0]) {
+    case '\0':
+      // Empty string.
+      return 1;
+    case '\n':
+      switch (line[1]) {
+        case '\0':
+          // Empty unix line.
+          return 1;
+      }
+    case '\r':
+      switch (line[1]) {
+        case '\0':
+          // Empty mac line.
+          return 1;
+        case '\n':
+          if (line[2] == '\0') {
+            // Empty dos line.
+            return 1;
+          }
+      }
+  }
+  return 0;
+}
+
+
+// Count the number of content characters in the line.
+// E.g. count the number of characters before any null, newline, or the end of the buffer.
+long count_chars(char *buffer, size_t buffer_size) {
+  long i = 0;
+  while (i < buffer_size && buffer[i] != '\n' && buffer[i] != '\r' && buffer[i] != '\0') {
+    i++;
+  }
+  return i;
 }
 
 
