@@ -14,9 +14,12 @@ const char *USAGE = "Usage: $ readsfq [options] reads.fq\n"
 "       $ gunzip -c reads.fq.gz | readsfq [options]\n"
 "This will count the number of reads in a FASTQ file, giving an accurate count\n"
 "even for files with multi-line reads.\n"
+"This will also report the range of quality score values, to help in determining\n"
+"the format of the quality scores.\n"
 "Options:\n"
+"-q: Don't report quality character range.\n"
 "-B [buffer_size]: Specify a file reading buffer size, in bytes. Default: 65535\n"
-"                  WARNING: Lines longer than this will end up truncated.";
+"                  WARNING: Lines longer than this will cause errors.";
 
 //TODO: bool
 typedef enum {
@@ -41,11 +44,14 @@ int main(int argc, char *argv[]) {
 
   // Read arguments
   FILE *infile = stdin;
+  int get_extremes = 1;
   char read_opt = '\0';
   int i;
   for (i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-h") == 0) {
       die(USAGE);
+    } else if (strcmp(argv[i], "-q") == 0) {
+      get_extremes = 0;
     } else if (strcmp(argv[i], "-B") == 0) {
       read_opt = 'B';
     } else if (read_opt == 'B') {
@@ -114,24 +120,35 @@ int main(int argc, char *argv[]) {
         }
         num_reads++;
         seq_len = 0;
+        // Assume only 1 header line.
         state = SEQ;
       }
     } else if (state == SEQ) {
       if (line[0] == '+') {
         qual_len = 0;
+        // End of sequence line comes when we see a line starting with "+".
         state = PLUS;
       } else {
         seq_len += count_chars(line, buffer_size);
       }
     } else if (state == PLUS || state == QUAL) {
+      // If the state is PLUS, we already saw the "+" line on the last loop.
+      // Assume there's only 1 "+" line, and assume we're now on a quality scores line.
       if (state == QUAL && line[0] == '@') {
+        // If we're past the "first" quality scores line and we see one that starts with a "@",
+        // that's very suspicious. Allow it, but raise a warning.
         fprintf(stderr, "Warning: Looking for more quality scores on line %ld but it starts with "
                         "\"@\".\nThis might be a header line and there were fewer quality scores "
                         "than bases.\n", line_num);
       }
       state = QUAL;
-      qual_len += count_chars_and_extremes(line, buffer_size, &extremes);
+      if (get_extremes) {
+        qual_len += count_chars_and_extremes(line, buffer_size, &extremes);
+      } else {
+        qual_len += count_chars(line, buffer_size);
+      }
       if (qual_len >= seq_len) {
+        // End of quality line comes once we've seen enough quality scores to match the sequence line.
         state = HEADER;
         if (qual_len > seq_len) {
           fprintf(stderr, "Warning on line %ld: Counted more quality scores than bases.\n", line_num);
@@ -141,8 +158,10 @@ int main(int argc, char *argv[]) {
     result = fgets(line, buffer_size, infile);
   }
 
-  fprintf(stderr, "Minimum quality score ascii value: %d (%c)\n", extremes.min, (char)extremes.min);
-  fprintf(stderr, "Maximum quality score ascii value: %d (%c)\n", extremes.max, (char)extremes.max);
+  if (get_extremes) {
+    fprintf(stderr, "Minimum quality score ascii value: %d (%c)\n", extremes.min, (char)extremes.min);
+    fprintf(stderr, "Maximum quality score ascii value: %d (%c)\n", extremes.max, (char)extremes.max);
+  }
   printf("%ld\n", num_reads);
 
   fclose(infile);
