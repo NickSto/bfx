@@ -12,9 +12,14 @@ const char *USAGE = "Usage: $ readsfq [options] reads.fq\n"
 "This will also report the range of quality score values, to help in determining\n"
 "the format of the quality scores.\n"
 "Options:\n"
-"-q: Don't report quality character range.\n"
+"-q: Don't print anything to stderr.\n"
+"-o [value]: What value to print to stdout. Default: \"reads\". Options:\n"
+"   \"reads\":  The number of reads in the file.\n"
+"   \"format\": The guessed format of the quality scores.\n"
+"             Either \"sanger\" or \"solexa\".\n"
 "-B [buffer_size]: Specify a file reading buffer size, in bytes. Default: 65535\n"
-"                  WARNING: Lines longer than this will cause errors.";
+"                  WARNING: Lines longer than this will cause errors.\n"
+"Note: The argument parsing is dumb. Don't combine options like \"-qo format\".";
 
 //TODO: bool
 typedef enum {
@@ -40,16 +45,28 @@ int main(int argc, char *argv[]) {
 
   // Read arguments
   FILE *infile = stdin;
-  int get_extremes = 1;
+  int quiet = 0;
+  char output = 'r';
   char read_opt = '\0';
   int i;
   for (i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-h") == 0) {
       die(USAGE);
     } else if (strcmp(argv[i], "-q") == 0) {
-      get_extremes = 0;
+      quiet = 1;
+    } else if (strcmp(argv[i], "-o") == 0) {
+      read_opt = 'o';
     } else if (strcmp(argv[i], "-B") == 0) {
       read_opt = 'B';
+    } else if (read_opt == 'o') {
+      if (strcmp(argv[i], "reads") == 0) {
+        output = 'r';
+      } else if (strcmp(argv[i], "format") == 0) {
+        output = 'f';
+      } else {
+        die("Invalid -o output format \"%s\"", argv[i]);
+      }
+      read_opt = '\0';
     } else if (read_opt == 'B') {
       if (! is_int(argv[i])) {
         die("Invalid buffer size: \"%s\"", argv[i]);
@@ -65,6 +82,11 @@ int main(int argc, char *argv[]) {
       //TODO: allow any number of input files
       die("Can only process one file argument");
     }
+  }
+
+  int get_extremes = 1;
+  if (quiet && output != 'f') {
+    get_extremes = 0;
   }
 
   /*TODO: This assumes that there will be at least as many quality scores as there are sequence
@@ -154,10 +176,14 @@ int main(int argc, char *argv[]) {
     result = fgets(line, buffer_size, infile);
   }
 
+  char format_guess = '?';
   if (get_extremes) {
+    format_guess = guess_quality_format(extremes, num_reads);
+  }
+
+  if (!quiet) {
     fprintf(stderr, "Quality score ascii range: %d (%c) to %d (%c)\n",
             extremes.min, (char)extremes.min, extremes.max, (char)extremes.max);
-    char format_guess = guess_quality_format(extremes, num_reads);
     switch (format_guess) {
       case 'S':
         fprintf(stderr, "Format: Very likely Sanger (offset 33).\n");
@@ -175,7 +201,23 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Format: Unknown\n");
     }
   }
-  printf("%ld\n", num_reads);
+
+  if (output == 'r') {
+    printf("%ld\n", num_reads);
+  } else if (output == 'f') {
+    switch (format_guess) {
+      case 'S':
+      case 's':
+        printf("sanger\n");
+        break;
+      case 'X':
+      case 'x':
+        printf("solexa\n");
+        break;
+      default:
+        printf("?\n");
+    }
+  }
 
   fclose(infile);
   return 0;
