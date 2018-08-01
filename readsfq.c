@@ -18,15 +18,22 @@ const char *USAGE = "Usage: $ readsfq [options] reads.fq\n"
 "-B [buffer_size]: Specify a file reading buffer size, in bytes. Default: 65535\n"
 "                  WARNING: Lines longer than this will end up truncated.";
 
-int line_is_empty(char *line);
-void die(const char *message, ...);
-int is_int(const char *int_str);
-long count_chars(char *buffer, size_t buffer_size);
-
 //TODO: bool
 typedef enum {
   HEADER, SEQ, PLUS, QUAL
 } State;
+
+typedef struct extremes {
+  int max;
+  int min;
+} Extremes;
+
+int line_is_empty(char *line);
+void die(const char *message, ...);
+int is_int(const char *int_str);
+long count_chars(char *buffer, size_t buffer_size);
+long count_chars_and_extremes(char *buffer, size_t buffer_size, Extremes *extremes);
+
 
 int main(int argc, char *argv[]) {
 
@@ -77,6 +84,9 @@ int main(int argc, char *argv[]) {
 
   char *line = malloc(buffer_size);
 
+  Extremes extremes;
+  extremes.max = 0;
+  extremes.min = 256;
   long num_reads = 0;
   long seq_len = 0;
   long qual_len = 0;
@@ -110,7 +120,7 @@ int main(int argc, char *argv[]) {
                         "than bases.\n", line_num);
       }
       state = QUAL;
-      qual_len += count_chars(line, buffer_size);
+      qual_len += count_chars_and_extremes(line, buffer_size, &extremes);
       if (qual_len >= seq_len) {
         state = HEADER;
         if (qual_len > seq_len) {
@@ -121,6 +131,8 @@ int main(int argc, char *argv[]) {
     result = fgets(line, buffer_size, infile);
   }
 
+  fprintf(stderr, "Minimum quality score ascii value: %d (%c)\n", extremes.min, (char)extremes.min);
+  fprintf(stderr, "Maximum quality score ascii value: %d (%c)\n", extremes.max, (char)extremes.max);
   printf("%ld\n", num_reads);
 
   fclose(infile);
@@ -160,6 +172,23 @@ int line_is_empty(char *line) {
 long count_chars(char *buffer, size_t buffer_size) {
   long i = 0;
   while (i < buffer_size && buffer[i] != '\n' && buffer[i] != '\r' && buffer[i] != '\0') {
+    i++;
+  }
+  return i;
+}
+
+
+long count_chars_and_extremes(char *buffer, size_t buffer_size, Extremes *extremes) {
+  long i = 0;
+  int value = 0;
+  while (i < buffer_size && buffer[i] != '\n' && buffer[i] != '\r' && buffer[i] != '\0') {
+    value = (int)buffer[i];
+    if (value > extremes->max) {
+      extremes->max = value;
+    }
+    if (value < extremes->min) {
+      extremes->min = value;
+    }
     i++;
   }
   return i;
