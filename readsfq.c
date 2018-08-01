@@ -4,11 +4,6 @@
 #include <stdarg.h>
 #include <errno.h>
 
-/* DISCLAIMER:
- * This is a My First C Program, and naiveley coded, but hopefully relatively
- * bug-free. I was just happy it worked.
-*/
-
 #define BUFFER_SIZE_DEFAULT 65535
 const char *USAGE = "Usage: $ readsfq [options] reads.fq\n"
 "       $ gunzip -c reads.fq.gz | readsfq [options]\n"
