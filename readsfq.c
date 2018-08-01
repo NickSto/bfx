@@ -36,6 +36,7 @@ void die(const char *message, ...);
 int is_int(const char *int_str);
 long count_chars(char *buffer, size_t buffer_size);
 long count_chars_and_extremes(char *buffer, size_t buffer_size, Extremes *extremes);
+char guess_quality_format(Extremes extremes, long num_reads);
 
 
 int main(int argc, char *argv[]) {
@@ -161,6 +162,23 @@ int main(int argc, char *argv[]) {
   if (get_extremes) {
     fprintf(stderr, "Quality score ascii range: %d (%c) to %d (%c)\n",
             extremes.min, (char)extremes.min, extremes.max, (char)extremes.max);
+    char format_guess = guess_quality_format(extremes, num_reads);
+    switch (format_guess) {
+      case 'S':
+        fprintf(stderr, "Format: Very likely Sanger (offset 33).\n");
+        break;
+      case 'X':
+        fprintf(stderr, "Format: Very likely Solexa (offset 64).\n");
+        break;
+      case 's':
+        fprintf(stderr, "Format: Maybe Sanger? (offset 33)\n");
+        break;
+      case 'x':
+        fprintf(stderr, "Format: Maybe Solexa? (offset 64)\n");
+        break;
+      case '?':
+        fprintf(stderr, "Format: Unknown\n");
+    }
   }
   printf("%ld\n", num_reads);
 
@@ -221,6 +239,49 @@ long count_chars_and_extremes(char *buffer, size_t buffer_size, Extremes *extrem
     i++;
   }
   return i;
+}
+
+
+// Estimate which quality score encoding it is based on the maximum and minimum ASCII value.
+// Returns 'S' if it's confident it's Sanger, 's' if it's less confident,
+// 'X' if it's confident it's Solexa, 'x' if it's less confident,
+// and '?' if it's not sure enough to make a guess.
+char guess_quality_format(Extremes extremes, long num_reads) {
+  if (extremes.min < 59) {
+    // Solexa values should never be below 59 (";", Solexa PHRED -5). If they are, it must be Sanger.
+    return 'S';
+  } else if (extremes.min >= 66) {
+    if (extremes.max >= 76) {
+      // If it never goes below 66 ("B", Solexa PHRED 2, Sanger PHRED 33),
+      // and it ranges above 76 ("L", Solexa PHRED 12, Sanger PHRED 43),
+      // then we can be pretty positive it's Solexa.
+      if (num_reads > 100) {
+        return 'X';
+      } else {
+        // But if we didn't see a ton of reads, we're less positive.
+        return 'x';
+      }
+    } else {
+      // If it stays between 66 and 76, that's a pretty weird and narrow range.
+      // That's either PHRED 2 to 12 (Solexa) or 33 to 43 (Sanger).
+      // Sanger might be barely more plausible, but not by much.
+      return '?';
+    }
+  } else if (extremes.min >= 59) {
+    if (extremes.max >= 76 || num_reads > 100) {
+      // If the minimum is within the Solexa range and the maximum is above the reasonable Sanger
+      // range, it's probably Solexa. Even if the maximum isn't out of range for Sanger, it's still
+      // probably Solexa, since that's a really high minimum if it's Sanger.
+      return 'x';
+    } else {
+      // However, if we just haven't seen many reads, then maybe the minimum is high just from a
+      // small sample. Let's not say either way.
+      // Note: It's pretty weird to have quality values all between 59-76.
+      // That's either PHRED -5 to 12 (Solexa) or 26 to 43 (Sanger).
+      return '?';
+    }
+  }
+  return '?';
 }
 
 
