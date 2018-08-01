@@ -72,7 +72,24 @@ int main(int argc, char *argv[]) {
       } else if (first_char) {
         switch (chr) {
           case '@':
-            if (line_type == FIRST || line_type  == QUAL) {
+            if (line_type == FIRST || line_type == QUAL) {
+              /*TODO: Pretty sure this is wrong. If the line after a QUAL line starts with a '@',
+               *      it could be either another QUAL line or a NAME line. According to Dan, we
+               *      can't assume the quality scores are as long as the sequence, since the quality
+               *      scores can be truncated.
+               *      Ideas for disambiguating:
+               *      1. If len(qual) >= len(seq), it's a NAME (If we've already seen enough
+               *         quality values to cover the read, the QUAL lines must be over.)
+               *      2. If the line plus the observed quality values so far is longer than the
+               *         read, it must be a NAME line.
+               *      3. No FASTQ format uses space characters for quality scores, according to
+               *         Wikipedia. If there's a space character in the line, say it's a NAME line?
+               *      But there could still conceivably be a read with truncated quality scores,
+               *      followed by a NAME line that contains no spaces and is short enough to not
+               *      exceed the read length.
+               *      Conclusion: Just check how BioPython does it:
+               *      http://biopython.org/DIST/docs/api/Bio.SeqIO.QualityIO-pysrc.html
+               */
               num_reads++;
               line_type = NAME;
             // '@' is a valid quality character
