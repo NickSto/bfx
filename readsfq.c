@@ -69,17 +69,27 @@ int main(int argc, char *argv[]) {
    *      bases. According to Dan, we can't make that assumption.
    *      Then what do we do to tell when the quality lines have ended?
    *      Ideas for disambiguating:
-   *      1. If len(qual) >= len(seq), it's a NAME (If we've already seen enough
+   *      1. If len(qual) >= len(seq), it's a HEADER (If we've already seen enough
    *         quality values to cover the read, the QUAL lines must be over.)
    *      2. If the line plus the observed quality values so far is longer than the
-   *         read, it must be a NAME line.
+   *         read, it must be a HEADER line.
    *      3. No FASTQ format uses space characters for quality scores, according to
-   *         Wikipedia. If there's a space character in the line, say it's a NAME line?
+   *         Wikipedia. If there's a space character in the line, say it's a HEADER line?
    *      But there could still conceivably be a read with truncated quality scores,
-   *      followed by a NAME line that contains no spaces and is short enough to not
+   *      followed by a HEADER line that contains no spaces and is short enough to not
    *      exceed the read length.
    *      Conclusion: Just check how BioPython does it:
    *      http://biopython.org/DIST/docs/api/Bio.SeqIO.QualityIO-pysrc.html
+   *      Update: BioPython just throws an error if the number of bases != num of quality scores.
+   */
+  /* Notes on format requirements:
+   * Empty lines are allowed, and ignored. If there's an empty line where a sequence or quality line
+   * is expected, it's interpreted as 0 base/quality scores.
+   * This means you can have zero-length reads.
+   * Multi-line sequences (more than 4 lines per read) are allowed.
+   * The number of quality scores must be >= the number of sequence bases. If there are missing
+   * quality scores, this will likely fail with an error, but it could possibly succeed, giving
+   * incorrect results.
    */
 
   char *line = malloc(buffer_size);
