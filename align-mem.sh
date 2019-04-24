@@ -26,7 +26,9 @@ Options:
                this is only the filename, which will be created in the FASTQ
                directory, or the directory specified with -d.
 -l logfile:    Output stderr of all commands to this file. Stdout will still
-               come out of the script's stdout."
+               come out of the script's stdout.
+-c:            Do extra cleanup afterward: Delete any reference index files
+               created by this script."
 
 function fail {
   echo "$@"
@@ -46,18 +48,23 @@ done
 
 ########## Gather settings ##########
 
+#TODO: Allow giving a full path to the output bam.
+#      Keep -b as a filename, but add a different option, like -a.
+
 # Get options
 outdir=''
 logfile=''
 bam_name=''
+cleanup=''
 bwa_opts="$BWA_OPTS_DEFAULT"
-while getopts ":d:b:o:l:h" opt; do
+while getopts ":d:b:o:l:ch" opt; do
   case "$opt" in
     d) outdir="$OPTARG";;
     b) bam_name="$OPTARG";;
     o) bwa_opts="$OPTARG";;
     l) logfile="$OPTARG";;
-    h) fail "$USAGE";;
+    c) cleanup="true";;
+    [h?]) fail "$USAGE";;
   esac
 done
 
@@ -77,6 +84,12 @@ fi
 ref="${@:$OPTIND:1}"
 fq1="${@:$OPTIND+1:1}"
 fq2="${@:$OPTIND+2:1}"
+
+to_be_cleaned=
+
+if [[ "$bam_name" == */* ]]; then
+  fail "Error: Should only give a filename with -b, not a path."
+fi
 
 # set $outdir
 if [[ -z $outdir ]]; then
@@ -155,14 +168,18 @@ else
   logpipe=''
 fi
 
-# does the reference look indexed?
-if ! ( [[
-      -s $ref.amb &&
-      -s $ref.ann &&
-      -s $ref.bwt &&
-      -s $ref.pac &&
-      -s $ref.sa
-    ]] ); then
+# Does the reference look indexed?
+index_missing=
+for ext in amb ann bwt pac sa; do
+  if ! [[ -s "$ref.$ext" ]]; then
+    index_missing=true
+    if [[ "$cleanup" ]]; then
+      to_be_cleaned="$to_be_cleaned $ref.$ext"
+    fi
+  fi
+done
+
+if [[ "$index_missing" ]]; then
   # use bwtsw (safe for any size) unless it's definitely smaller than 2GB
   algo="bwtsw"
   if [[ $(du -sb $ref | awk '{print $1}') -lt $REF_THRES ]]; then
@@ -179,6 +196,7 @@ if [[ $logfile ]]; then
   echo -e "\t\t\t::::: bwa mem | samtools view :::::" >> "$logfile";
 fi
 echev "bwa mem $bwa_opts $ref $fq1 $fq2 $logpipe | samtools view -Sb - > $bamtmp $logpipe"
+to_be_cleaned="$to_be_cleaned $bamtmp"
 
 # sort BAM
 if [[ $logfile ]]; then
@@ -192,7 +210,9 @@ if [[ $logfile ]]; then
 fi
 echev "samtools index $bam $logpipe"
 
-echev "rm $bamtmp"
+for path in $to_be_cleaned; do
+  echev "rm $path"
+done
 
 if [[ $logfile ]]; then
   echo -e "\t\t\t::::: done :::::" >> "$logfile";
