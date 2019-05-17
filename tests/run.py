@@ -5,13 +5,9 @@ import logging
 import pathlib
 import subprocess
 import sys
+import types
 assert sys.version_info.major >= 3, 'Python 3 required'
 
-AllTests = {}
-MetaTests = {}
-SimpleTests = {}
-ActiveTests = {}
-InactiveTests = {}
 TESTS_DIR = pathlib.Path(__file__).resolve().parent
 ROOT_DIR = TESTS_DIR.parent
 DESCRIPTION = """"""
@@ -38,35 +34,48 @@ def main(argv):
 
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
 
+  # Create the dicts holding all defined tests.
+
+  meta_tests = get_objects_diff(GlobalsInitial, GlobalsAfterMeta)
+  meta_tests['all'] = lambda name: run_test_group(simple_tests)
+  meta_tests['active'] = lambda name: run_test_group(active_tests)
+  meta_tests['inactive'] = lambda name: run_test_group(inactive_tests)
+
+  active_tests = get_objects_diff(GlobalsAfterMeta, GlobalsAfterActive)
+  inactive_tests = get_objects_diff(GlobalsAfterActive, GlobalsAfterInactive)
+  simple_tests = add_dicts(active_tests, inactive_tests)
+
+  all_tests = add_dicts(meta_tests, simple_tests)
+
   if not args.tests:
-    print('active:')
-    for test_name in ActiveTests.keys():
+    print('Meta tests:')
+    for test_name in meta_tests.keys():
       print('  '+test_name)
-    if not InactiveTests:
-      return 1
-    print('inactive:')
-    for test_name in InactiveTests.keys():
+    print('Active tests:')
+    for test_name in active_tests.keys():
       print('  '+test_name)
+    print('Inactive tests:')
+    for test_name in inactive_tests.keys():
+      print('  '+test_name)
+    return 1
 
   unknown_tests = []
   for test_name in args.tests:
-    if test_name not in AllTests:
+    if test_name not in all_tests:
       unknown_tests.append(test_name)
   if unknown_tests:
     fail('Error: Test(s) "{}" unrecognized.'.format('", "'.join(unknown_tests)))
 
   for test_name in args.tests:
-    test_fxn = AllTests[test_name]
+    test_fxn = all_tests[test_name]
     test_fxn(test_name)
+
+GlobalsInitial = globals().copy()
 
 
 ##### Meta tests #####
 
-MetaTests['all'] = lambda name: run_test_group(SimpleTests)
-MetaTests['active'] = lambda name: run_test_group(ActiveTests)
-MetaTests['inactive'] = lambda name: run_test_group(InactiveTests)
-
-AllTests.update(MetaTests)
+GlobalsAfterMeta = globals().copy()
 
 
 ##### Active tests #####
@@ -91,24 +100,38 @@ def getreads_smoke(test_name):
         print(line)
     else:
       print('success')
-ActiveTests['getreads_smoke'] = getreads_smoke
 
 
-SimpleTests.update(ActiveTests)
+GlobalsAfterActive = globals().copy()
 
 
 ##### Inactive tests #####
 
-SimpleTests.update(InactiveTests)
-
-AllTests.update(SimpleTests)
+GlobalsAfterInactive = globals().copy()
 
 
 ##### Helper functions #####
 
+
+def add_dicts(*dicts):
+  combined = {}
+  for d in dicts:
+    for key, value in d.items():
+      combined[key] = value
+  return combined
+
+
 def run_test_group(test_group):
   for test_name, test_fxn in test_group.items():
     test_fxn(test_name)
+
+
+def get_objects_diff(objects_before, objects_after, object_type=types.FunctionType):
+  diff = {}
+  for name, obj in objects_after.items():
+    if name not in objects_before and isinstance(obj, object_type):
+      diff[name] = obj
+  return diff
 
 
 def run_command(command):
