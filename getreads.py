@@ -31,7 +31,7 @@ def getparser(input, filetype, qual_format='sanger', name_col=1, seq_col=2, qual
   elif filetype == 'fastq':
     return FastqReader(input, qual_format=qual_format)
   elif filetype == 'sam':
-    return SamReader(input)
+    return SamReader(input, qual_format=qual_format)
   elif filetype == 'tsv':
     return TsvReader(input, qual_format=qual_format,
                      name_col=name_col, seq_col=seq_col, qual_col=qual_col)
@@ -272,11 +272,11 @@ def main(argv):
       format = 'lines'
     else:
       format = ext[1:]
-  print('Reading input as format "{}".'.format(format))
+  print('Reading input as format {!r}.'.format(format))
   for i, read in enumerate(getparser(args.infile, filetype=format)):
-    print('Read {} id/name: "{}"/"{}"'.format(i+1, read.id, read.name))
-    print('Read {} seq:  "{}"'.format(i+1, read.seq))
-    print('Read {} qual: "{}"'.format(i+1, read.qual))
+    print('Read {} id/name: {!r}/{!r}'.format(i+1, read.id, read.name))
+    print('Read {} seq:  {!r}'.format(i+1, read.seq))
+    print('Read {} qual: {!r}'.format(i+1, read.qual))
 
 
 def fail(message):
