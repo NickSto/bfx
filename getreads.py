@@ -3,6 +3,7 @@ import argparse
 import logging
 import os
 import sys
+import types
 """A simple parser for FASTA, FASTQ, SAM, etc. Create generators that just return the read name and
 sequence.
 All format parsers follow this API:
@@ -47,7 +48,12 @@ def detect_input_type(obj):
     os.path.isfile(obj)
     return 'path'
   except TypeError:
-    return 'file'
+    if isinstance(obj, types.GeneratorType):
+      return 'generator'
+    elif hasattr(obj, 'read') and hasattr(obj, 'close'):
+      return 'file'
+    else:
+      return None
 
 
 class FormatError(Exception):
@@ -88,24 +94,24 @@ class Reader(object):
     for read in self.parser():
       for base in read.seq:
         yield base
-  def get_filehandle(self):
+  def get_input_iterator(self):
     if self.input_type == 'path':
       return open(self.input)
-    elif self.input_type == 'file':
+    else:
       return self.input
 
 
 class LineReader(Reader):
   """A parser for the simplest format: Only the sequence, one line per read."""
   def parser(self):
-    filehandle = self.get_filehandle()
+    input_iterator = self.get_input_iterator()
     try:
-      for line in filehandle:
+      for line in input_iterator:
         read = Read(seq=line.rstrip('\r\n'))
         yield read
     finally:
       if self.input_type == 'path':
-        filehandle.close()
+        input_iterator.close()
 
 
 class TsvReader(Reader):
@@ -115,9 +121,9 @@ class TsvReader(Reader):
   Column 3: quality scores (optional)"""
   def parser(self):
     min_fields = max(self.name_col, self.seq_col)
-    filehandle = self.get_filehandle()
+    input_iterator = self.get_input_iterator()
     try:
-      for line in filehandle:
+      for line in input_iterator:
         fields = line.rstrip('\r\n').split('\t')
         if len(fields) < min_fields:
           continue
@@ -133,7 +139,7 @@ class TsvReader(Reader):
         yield read
     finally:
       if self.input_type == 'path':
-        filehandle.close()
+        input_iterator.close()
 
 
 class SamReader(Reader):
@@ -143,9 +149,9 @@ class SamReader(Reader):
   All alignment lines have 11 or more fields. Other lines will be skipped.
   """
   def parser(self):
-    filehandle = self.get_filehandle()
+    input_iterator = self.get_input_iterator()
     try:
-      for line in filehandle:
+      for line in input_iterator:
         fields = line.split('\t')
         if len(fields) < 11:
           continue
@@ -161,18 +167,19 @@ class SamReader(Reader):
         yield read
     finally:
       if self.input_type == 'path':
-        filehandle.close()
+        input_iterator.close()
 
 
 class FastaReader(Reader):
   """A simple FASTA parser that reads one sequence at a time into memory."""
   def parser(self):
-    filehandle = self.get_filehandle()
+    input_iterator = self.get_input_iterator()
     try:
       read = None
       while True:
-        line_raw = filehandle.readline()
-        if not line_raw:
+        try:
+          line_raw = next(input_iterator)
+        except StopIteration:
           if read is not None:
             yield read
           return
@@ -189,24 +196,25 @@ class FastaReader(Reader):
           read.seq += line
     finally:
       if self.input_type == 'path':
-        filehandle.close()
+        input_iterator.close()
 
 
 class FastqReader(Reader):
   """A simple FASTQ parser. Can handle multi-line sequences, though."""
   def parser(self):
-    filehandle = self.get_filehandle()
+    input_iterator = self.get_input_iterator()
     try:
       read = None
       line_num = 0
       state = 'header'
       while True:
-        line_raw = filehandle.readline()
-        line_num += 1
-        if not line_raw:
+        try:
+          line_raw = next(input_iterator)
+        except StopIteration:
           if read is not None:
             yield read
           return
+        line_num += 1
         line = line_raw.rstrip('\r\n')
         if state == 'header':
           if not line.startswith('@'):
@@ -240,7 +248,7 @@ class FastqReader(Reader):
             state = 'header'
     finally:
       if self.input_type == 'path':
-        filehandle.close()
+        input_iterator.close()
 
 
 DESCRIPTION = 'Test parser by parsing an input file and printing its contents.'
