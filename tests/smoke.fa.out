@@ -1,0 +1,10 @@
+Reading input as format 'fasta'.
+Read 1 id/name: 'read1'/'read1 desc1'
+Read 1 seq:  'GATTACAGATTACA'
+Read 1 qual: ''
+Read 2 id/name: 'read2'/'read2 desc2'
+Read 2 seq:  'TGTAATCTGTAATC'
+Read 2 qual: ''
+Read 3 id/name: 'read3'/'read3 desc3'
+Read 3 seq:  'TAGACATTATGTTT'
+Read 3 qual: ''
