@@ -48,6 +48,13 @@ def make_argparser():
     help='The threshold for calling a consensus base. More than this fraction of bases must agree '
          'in order to use the plurality vote as the consensus. E.g. give 0.5 to require a majority. '
          'Default: there is no threshold. The plurality base will be used.')
+  msa = parser.add_argument_group('MSA Input')
+  msa.add_argument('-b', '--barcode',
+    help='The barcode of the family you want to view.')
+  msa.add_argument('-o', '--order', choices=('ab', 'ba'),
+    help='The order of the family you want to view.')
+  msa.add_argument('-m', '--mate', choices=('0', '1', '2'),
+    help='The mate of the family you want to view.')
   log = parser.add_argument_group('Logging')
   log.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
@@ -70,7 +77,12 @@ def main(argv):
 
   seq_col, qual_col = get_columns(args.seq_column, args.qual_column, format, args.format)
 
-  seqs, quals, seqlen = read_seqs(args.input, format, args.qual_format, seq_col, qual_col)
+  if args.format == 'msa':
+    input = filter_msa(args.input, args.barcode, args.order, args.mate)
+  else:
+    input = args.input
+
+  seqs, quals, seqlen = read_seqs(input, format, args.qual_format, seq_col, qual_col)
 
   if len(seqs) == 0 or len(quals) == 0:
     fail('Error: No sequences found.')
@@ -115,6 +127,20 @@ def get_columns(seq_column, qual_column, format, raw_format):
     else:
       qual_col = None
   return seq_col, qual_col
+
+
+def filter_msa(input, barcode, order, mate):
+  for line in input:
+    fields = line.rstrip('\r\n').split('\t')
+    if len(fields) < 3:
+      return
+    if barcode is not None and fields[0] != barcode:
+      continue
+    if order is not None and fields[1] != order:
+      continue
+    if mate is not None and fields[2] != mate:
+      continue
+    yield line
 
 
 def read_seqs(infile, format, qual_format, seq_col, qual_col):
