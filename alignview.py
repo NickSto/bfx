@@ -22,36 +22,39 @@ DEFAULT_QUAL_COLUMN = 3
 
 def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
-  parser.add_argument('input', metavar='align.fa', type=argparse.FileType('r'), default=sys.stdin,
+  input = parser.add_argument_group('Input')
+  input.add_argument('input', metavar='align.fa', type=argparse.FileType('r'), default=sys.stdin,
                       nargs='?',
     help='Aligned input sequences. Can be FASTA or just the plain sequences, one per line.')
-  parser.add_argument('-f', '--format', choices=list(getreads.FORMATS)+['msa'],
+  input.add_argument('-f', '--format', choices=list(getreads.FORMATS)+['msa'],
     help='Format of the input. Will be inferred from the filename if not given. "lines" is the most '
          'basic format: Just the sequences, one per line.')
-  parser.add_argument('-S', '--seq-column', type=int,
+  input.add_argument('-S', '--seq-column', type=int,
     help='For tsv (tab-delimited) input, this column contains the sequence data (1-indexed). '
          'If you specify this manually without specifying --qual-column, it will assume there are '
          'no quality scores. '
          'Default: '+str(DEFAULT_SEQ_COLUMN))
-  parser.add_argument('-Q', '--qual-column', type=int,
+  input.add_argument('-Q', '--qual-column', type=int,
     help='For tsv (tab-delimited) input, this column contains the quality scores (1-indexed). '
          'Default: '+str(DEFAULT_QUAL_COLUMN))
-  parser.add_argument('-q', '--qual-thres', type=int, default=25,
-    help='Quality score threshold. If quality scores are present, don\'t show bases with lower '
-         'quality scores than these. Default: %(default)s')
-  parser.add_argument('-F', '--qual-format', choices=QUAL_OFFSETS.keys(), default='sanger',
+  input.add_argument('-F', '--qual-format', choices=QUAL_OFFSETS.keys(), default='sanger',
     help='FASTQ quality score format. Sanger scores are assumed to begin at \'{}\' ({}). '
          'Default: %(default)s.'.format(QUAL_OFFSETS['sanger'], chr(QUAL_OFFSETS['sanger'])))
-  parser.add_argument('-c', '--cons-thres', type=float,
+  cons = parser.add_argument_group('Consensus calling')
+  cons.add_argument('-q', '--qual-thres', type=int, default=25,
+    help='Quality score threshold. If quality scores are present, don\'t show bases with lower '
+         'quality scores than these. Default: %(default)s')
+  cons.add_argument('-c', '--cons-thres', type=float,
     help='The threshold for calling a consensus base. More than this fraction of bases must agree '
          'in order to use the plurality vote as the consensus. E.g. give 0.5 to require a majority. '
          'Default: there is no threshold. The plurality base will be used.')
-  parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
+  log = parser.add_argument_group('Logging')
+  log.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
-  parser.add_argument('-s', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
+  log.add_argument('-s', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
     default=logging.WARNING)
-  parser.add_argument('-v', '--verbose', dest='volume', action='store_const', const=logging.INFO)
-  parser.add_argument('-D', '--debug', dest='volume', action='store_const', const=logging.DEBUG)
+  log.add_argument('-v', '--verbose', dest='volume', action='store_const', const=logging.INFO)
+  log.add_argument('-D', '--debug', dest='volume', action='store_const', const=logging.DEBUG)
   return parser
 
 
@@ -63,38 +66,9 @@ def main(argv):
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
   tone_down_logger()
 
-  special_format = None
-  if args.format:
-    if args.format == 'msa':
-      special_format = args.format
-      format = 'tsv'
-    else:
-      format = args.format
-  else:
-    if args.input is sys.stdin:
-      fail('Error: Must give the --format if reading from stdin.')
-    ext = os.path.splitext(args.input.name)[1]
-    if ext == '.fq':
-      format = 'fastq'
-    elif ext == '.fa':
-      format = 'fasta'
-    else:
-      format = ext[1:]
+  format = get_format(args.format, args.input)
 
-  seq_col = DEFAULT_SEQ_COLUMN
-  qual_col = DEFAULT_QUAL_COLUMN
-  if special_format == 'msa':
-    seq_col = 5
-    qual_col = 6
-  if args.seq_column or args.qual_column:
-    if format != 'tsv':
-      fail('Error: --seq-column and --qual-column can only be used with tsv format.')
-    if args.seq_column:
-      seq_col = args.seq_column
-    if args.qual_column:
-      qual_col = args.qual_column
-    else:
-      qual_col = None
+  seq_col, qual_col = get_columns(args.seq_column, args.qual_column, format, args.format)
 
   seqs, quals, seqlen = read_seqs(args.input, format, args.qual_format, seq_col, qual_col)
 
@@ -106,6 +80,41 @@ def main(argv):
   print(consensus)
   for seq in masked_seqs:
     print(seq)
+
+
+def get_format(format, input):
+  if format:
+    if format == 'msa':
+      return 'tsv'
+  else:
+    if input is sys.stdin:
+      fail('Error: Must give the --format if reading from stdin.')
+    ext = os.path.splitext(input.name)[1]
+    if ext == '.fq':
+      return 'fastq'
+    elif ext == '.fa':
+      return 'fasta'
+    else:
+      return ext[1:]
+
+
+def get_columns(seq_column, qual_column, format, raw_format):
+  if raw_format == 'msa':
+    seq_col = 5
+    qual_col = 6
+  else:
+    seq_col = DEFAULT_SEQ_COLUMN
+    qual_col = DEFAULT_QUAL_COLUMN
+  if seq_column or qual_column:
+    if format != 'tsv':
+      fail('Error: --seq-column and --qual-column can only be used with tsv format.')
+    if seq_column:
+      seq_col = seq_column
+    if qual_column:
+      qual_col = qual_column
+    else:
+      qual_col = None
+  return seq_col, qual_col
 
 
 def read_seqs(infile, format, qual_format, seq_col, qual_col):
