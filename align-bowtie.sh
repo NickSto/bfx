@@ -51,6 +51,18 @@ function main {
     fi
   done
 
+  # Get format of reads files.
+  fq1ext=$(echo "${fq1:$((${#fq1}-3))}" | tr '[:upper:]' '[:lower:]')
+  fq2ext=$(echo "${fq2:$((${#fq2}-3))}" | tr '[:upper:]' '[:lower:]')
+  if [[ "$fq1ext" != "$fq2ext" ]]; then
+    fail "Error: File extension of inputs not the same: $fq1 vs $fq2"
+  fi
+  if [[ "$fq1ext" == '.fa' ]] || [[ "$fq1ext" == '.fasta' ]]; then
+    format_arg='-f'
+  elif [[ "$fq1ext" == '.fq' ]] || [[ "$fq1ext" == '.fastq' ]]; then
+    format_arg=
+  fi
+
   # Determine names of the SAM and BAM files.
   if [[ "$sam" ]]; then
     format=sam
@@ -92,7 +104,8 @@ ref:    $ref
 fastq1: $fq1
 fastq2: $fq2
 sam:    $sam
-bam:    $bam" >&2
+bam:    $bam
+format: $format" >&2
 
   # Does the reference look indexed?
   index_missing=
@@ -112,7 +125,7 @@ bam:    $bam" >&2
   if [[ "$index_missing" ]]; then
     bowtie-build -f $indexer_threads --offrate 1 "$ref" "$ref" >/dev/null
   fi
-  bowtie --chunkmbs "$chunkmbs" --threads "$threads" -f --sam -v 3 \
+  bowtie --chunkmbs "$chunkmbs" --threads "$threads" $format_arg --sam -v 3 \
     "$ref" -1 "$fq1" -2 "$fq2" "$sam"
 
   # Check output and convert if requested.
@@ -126,7 +139,10 @@ bam:    $bam" >&2
     samtools view -Sb "$sam" | samtools sort -o - dummy > "$bam"
     if [[ -s "$bam" ]]; then
       samtools index "$bam"
-      to_be_cleaned["${#to_be_cleaned[@]}"]="$sam"
+      set +u
+      len="${#to_be_cleaned[@]}"
+      set -u
+      to_be_cleaned["$len"]="$sam"
       echo "Success. Output located in \"$bam\"." >&2
     else
       fail "Warning: Output file \"$bam\" empty or missing."
@@ -134,8 +150,11 @@ bam:    $bam" >&2
   fi
 
   # Cleanup.
+  set +u
+  len="${#to_be_cleaned[@]}"
+  set -u
   i=0
-  while [[ "$i" -lt "${#to_be_cleaned[@]}" ]]; do
+  while [[ "$i" -lt "$len" ]]; do
     if [[ -f "${to_be_cleaned[$i]}" ]]; then
       rm "${to_be_cleaned[$i]}"
     fi
