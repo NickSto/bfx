@@ -109,9 +109,7 @@ def main(argv):
       mutated_seq = substitute_ref_bases(raw_seq, pos, raw_ref_seq)
       if direction == 'reverse':
         final_seq = revcomp(mutated_seq)
-        logging.info(f'  reversing {mutated_seq[:5]}.. -> {final_seq[:5]}..')
       else:
-        logging.info(f'  forward')
         final_seq = mutated_seq
       if fq_files:
         if args.duplex:
