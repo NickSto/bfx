@@ -2,6 +2,7 @@
 import argparse
 import difflib
 import logging
+import os
 import pathlib
 import subprocess
 import sys
@@ -91,8 +92,8 @@ def getreads_smoke(test_name):
     ('smoke.sam', 'smoke.sam.out'),
   )
   for input_name, output_name in test_pairs:
-    print('{} ::: {} ::: {}\t'.format(test_name, script_name, input_name), end='')
-    result = run_command((script, TESTS_DIR/input_name))
+    print(f'{test_name} ::: {script_name} ::: {input_name}\t', end='')
+    result = run_command_and_capture((script, TESTS_DIR/input_name), onerror='stderr')
     expected = read_file(TESTS_DIR/output_name)
     if result != expected:
       print('FAILED')
@@ -100,6 +101,45 @@ def getreads_smoke(test_name):
         print(line)
     else:
       print('success')
+
+
+def parse_test_align(test_name):
+  script_name = 'parse-test-align.py'
+  script = ROOT_DIR / script_name
+  inname = 'parse-align.duplex.in.txt'
+  outnames = {
+    'ref':'parse-align.duplex.ref.fa',
+    'fq1':'parse-align.duplex.reads_1.fq',
+    'fq2':'parse-align.duplex.reads_2.fq'
+  }
+  print(f'{test_name} ::: {script_name} ::: {inname}')
+  # $ parse-test-align.py --duplex parse-align.in.txt --ref parse-align.ref.fa \
+  #   --fq1 parse-align.reads_1.fq --fq2 parse-align.reads_2.fq
+  cmd = [script, '--duplex', TESTS_DIR/inname]
+  for key, outname in outnames.items():
+    cmd.append('--'+key)
+    cmd.append(TESTS_DIR/(outname+'.tmp'))
+  exitcode = run_command(cmd, onerror='stderr')
+  if exitcode != 0:
+    return
+  failures = []
+  for outname in outnames.values():
+    expected = TESTS_DIR/outname
+    result = TESTS_DIR/(outname+'.tmp')
+    if result.exists():
+      stdout = run_command_and_capture(('diff', expected, result))
+      if stdout:
+        failures.append((outname, head(stdout)))
+      os.remove(result)
+    else:
+      logging.warning(f'Output file missing: {str(result)!r}')
+  if failures:
+    print('FAILED')
+  else:
+    print('success')
+  for outname, diff in failures:
+    print(f'  {outname}:')
+    print(diff)
 
 
 GlobalsAfterActive = globals().copy()
@@ -134,16 +174,44 @@ def get_objects_diff(objects_before, objects_after, object_type=types.FunctionTy
   return diff
 
 
-def run_command(command):
+def head(string, lines=10):
+  string_lines = string.splitlines()
+  output = '\n'.join(string_lines[:lines])
+  if len(string_lines) > lines:
+    output += '\n\t...'
+  return output
+
+
+def run_command(command, onerror='warn'):
+  if onerror == 'stderr':
+    result = run_command_and_catch(command, onerror=onerror, stderr=subprocess.PIPE)
+    if result.returncode != 0:
+      logging.error(str(result.stderr, 'utf8'))
+  else:
+    result = run_command_and_catch(command, onerror=onerror, stderr=subprocess.DEVNULL)
+  return result.returncode
+
+
+def run_command_and_capture(command, onerror='warn'):
+  result = run_command_and_catch(
+    command, onerror=onerror, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+  )
+  if result.returncode != 0 and onerror == 'stderr':
+    logging.error(str(result.stderr, 'utf8'))
+  return str(result.stdout, 'utf8')
+
+
+def run_command_and_catch(command, onerror='warn', **kwargs):
   try:
-    output = subprocess.check_output(command, stderr=subprocess.DEVNULL)
-  except OSError as error:
-    logging.error('Error: {}'.format(error))
-    return None
-  except subprocess.CalledProcessError as error:
-    logging.error('Error: {}'.format(error))
-    return None
-  return str(output, 'utf8')
+    result = subprocess.run(command, **kwargs)
+  except (OSError, subprocess.CalledProcessError) as error:
+    if onerror == 'stderr':
+      pass
+    elif onerror == 'warn':
+      logging.error(f'Error: ({type(error).__name__}) {error}')
+    elif onerror == 'raise':
+      raise
+  return result
 
 
 def read_file(path):
