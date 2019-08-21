@@ -106,40 +106,55 @@ def getreads_smoke(test_name):
 def parse_test_align(test_name):
   script_name = 'parse-test-align.py'
   script = ROOT_DIR / script_name
-  inname = 'parse-align.duplex.in.txt'
-  outnames = {
-    'ref':'parse-align.duplex.ref.fa',
-    'fq1':'parse-align.duplex.reads_1.fq',
-    'fq2':'parse-align.duplex.reads_2.fq'
-  }
-  print(f'{test_name} ::: {script_name} ::: {inname}')
-  # $ parse-test-align.py --duplex parse-align.in.txt --ref parse-align.ref.fa \
-  #   --fq1 parse-align.reads_1.fq --fq2 parse-align.reads_2.fq
-  cmd = [script, '--duplex', TESTS_DIR/inname]
-  for key, outname in outnames.items():
-    cmd.append('--'+key)
-    cmd.append(TESTS_DIR/(outname+'.tmp'))
-  exitcode = run_command(cmd, onerror='stderr')
-  if exitcode != 0:
-    return
-  failures = []
-  for outname in outnames.values():
-    expected = TESTS_DIR/outname
-    result = TESTS_DIR/(outname+'.tmp')
-    if result.exists():
-      stdout = run_command_and_capture(('diff', expected, result))
-      if stdout:
-        failures.append((outname, head(stdout)))
-      os.remove(result)
+  subtests = (
+    {
+      'args':[],
+      'input':'parse-align.in.txt',
+      'outputs':{
+        'ref':'parse-align.ref.fa',
+        'fq1':'parse-align.reads_1.fq',
+        'fq2':'parse-align.reads_2.fq'
+      },
+    },
+    {
+      'args':['--duplex'],
+      'input':'parse-align.duplex.in.txt',
+      'outputs':{
+        'ref':'parse-align.duplex.ref.fa',
+        'fq1':'parse-align.duplex.reads_1.fq',
+        'fq2':'parse-align.duplex.reads_2.fq'
+      },
+    }
+  )
+  for data in subtests:
+    print(f'{test_name} ::: {script_name} ::: {data["input"]}')
+    # $ parse-test-align.py --duplex parse-align.in.txt --ref parse-align.ref.fa \
+    #   --fq1 parse-align.reads_1.fq --fq2 parse-align.reads_2.fq
+    cmd = [script, TESTS_DIR/data['input']] + data['args']
+    for key, outname in data['outputs'].items():
+      cmd.append('--'+key)
+      cmd.append(TESTS_DIR/(outname+'.tmp'))
+    exitcode = run_command(cmd, onerror='stderr')
+    if exitcode != 0:
+      return
+    failures = []
+    for outname in data['outputs'].values():
+      expected = TESTS_DIR/outname
+      result = TESTS_DIR/(outname+'.tmp')
+      if result.exists():
+        stdout = run_command_and_capture(('diff', expected, result))
+        if stdout:
+          failures.append((outname, head(stdout)))
+        os.remove(result)
+      else:
+        logging.warning(f'Output file missing: {str(result)!r}')
+    if failures:
+      print('FAILED')
     else:
-      logging.warning(f'Output file missing: {str(result)!r}')
-  if failures:
-    print('FAILED')
-  else:
-    print('success')
-  for outname, diff in failures:
-    print(f'  {outname}:')
-    print(diff)
+      print('success')
+    for outname, diff in failures:
+      print(f'  {outname}:')
+      print(diff)
 
 
 GlobalsAfterActive = globals().copy()
