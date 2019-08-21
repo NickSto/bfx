@@ -8,7 +8,9 @@ assert sys.version_info.major >= 3, 'Python 3 required'
 
 REVCOMP_TABLE = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
 
-DESCRIPTION = """Generate test files from a human-readable alignment."""
+DESCRIPTION = """Generate test reads from a human-readable alignment.
+This script allows you to create test inputs in a natural way, by writing reads in their aligned
+position in a human-readable text file. See tests/parse-align.in.txt for an example."""
 
 
 def make_argparser():
@@ -103,7 +105,6 @@ def main(argv):
         name = prefix[2:] or None
       if mate == first_mate and add_pair_num:
         pair_num += 1
-      logging.info(f'Read {name}.{pair_num}')
       raw_seq, pos, direction = get_raw_seq(line)
       mutated_seq = substitute_ref_bases(raw_seq, pos, raw_ref_seq)
       if direction == 'reverse':
