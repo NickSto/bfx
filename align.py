@@ -7,14 +7,18 @@ import subprocess
 import sys
 assert sys.version_info.major >= 3, 'Python 3 required'
 
-INDEX_ENDINGS = ('1.bt2', '2.bt2', '3.bt2', '4.bt2', 'rev.1.bt2', 'rev.2.bt2')
-DESCRIPTION = """Align reads with bowtie2.
+INDEX_ENDINGS = {
+  'bowtie2':('1.bt2', '2.bt2', '3.bt2', '4.bt2', 'rev.1.bt2', 'rev.2.bt2')
+}
+DESCRIPTION = """Align reads.
 This will automatically run all the commands needed to get you from raw reads to an indexed BAM
 file, including indexing the reference sequence."""
 
 
 def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
+  parser.add_argument('aligner', choices=('bowtie2',),
+    help='Aligner to use. Currently only works with bowtie2.')
   parser.add_argument('ref', metavar='ref.fa', type=pathlib.Path,
     help='Reference sequence.')
   parser.add_argument('reads1', metavar='reads_1.fq', type=pathlib.Path,
@@ -61,17 +65,17 @@ def main(argv):
       if path.exists():
         fail(f'Error: output path {path} already exists.')
 
-  was_indexed = is_indexed(ref_base)
+  was_indexed = is_indexed(args.aligner, ref_base)
 
   # Index reference (if needed).
   # $ bowtie2-build ref.fa ref
   if not was_indexed:
-    clear_indices(ref_base)
-    index_ref(args.ref, ref_base)
+    clear_indices(args.aligner, ref_base)
+    index_ref(args.aligner, args.ref, ref_base)
 
   # Do alignment.
   # $ bowtie2 -x ref -1 reads_1.fq -2 reads_2.fq -S align.sam
-  align(ref_base, args.reads1, args.reads2, sam_path)
+  align(args.aligner, ref_base, args.reads1, args.reads2, sam_path)
 
   if format == 'bam':
     # Convert output.
@@ -87,7 +91,7 @@ def main(argv):
     os.remove(sam_path)
 
   if (not was_indexed and not args.keep_index) or args.delete_index:
-    clear_indices(ref_base)
+    clear_indices(args.aligner, ref_base)
 
   if out_path.is_file():
     logging.error(f'Success! Output is in {str(out_path)!r}')
@@ -138,8 +142,8 @@ def get_format(out_arg, format_arg):
   return 'bam'
 
 
-def is_indexed(ref_base):
-  for ending in INDEX_ENDINGS:
+def is_indexed(aligner, ref_base):
+  for ending in INDEX_ENDINGS[aligner]:
     ref_path_str = ref_base+'.'+ending
     if os.path.exists(ref_path_str):
       if not os.path.isfile(ref_path_str):
@@ -149,20 +153,24 @@ def is_indexed(ref_base):
   return True
 
 
-def clear_indices(ref_base):
-  for ending in INDEX_ENDINGS:
+def clear_indices(aligner, ref_base):
+  for ending in INDEX_ENDINGS[aligner]:
     ref_path_str = ref_base+'.'+ending
     if os.path.isfile(ref_path_str):
       os.remove(ref_path_str)
 
 
-def index_ref(ref, ref_base):
-  cmd = ('bowtie2-build', ref, ref_base)
-  run_command(cmd)
+def index_ref(aligner, ref, ref_base):
+  kwargs = {}
+  if aligner == 'bowtie2':
+    cmd = ('bowtie2-build', ref, ref_base)
+    kwargs['stdout'] = subprocess.DEVNULL
+  run_command(cmd, **kwargs)
 
 
-def align(ref_base, reads1_path, reads2_path, sam_path):
-  cmd = ('bowtie2', '-x', ref_base, '-1', reads1_path, '-2', reads2_path, '-S', sam_path)
+def align(aligner, ref_base, reads1_path, reads2_path, sam_path):
+  if aligner == 'bowtie2':
+    cmd = ('bowtie2', '-x', ref_base, '-1', reads1_path, '-2', reads2_path, '-S', sam_path)
   run_command(cmd)
 
 
@@ -193,9 +201,9 @@ def index_bam(bam_path):
     fail(f'Error: Output BAM missing ({bam_path})')
 
 
-def run_command(cmd):
+def run_command(cmd, **kwargs):
   logging.warning('$ '+' '.join(map(str, cmd)))
-  if subprocess.call(cmd):
+  if subprocess.call(cmd, **kwargs):
     fail(f'Error: {cmd[0]} returned with a non-zero exit code.')
 
 
