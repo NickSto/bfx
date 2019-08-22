@@ -130,15 +130,21 @@ def get_raw_seq(line):
   direction = None
   seq = line.lstrip(' ')
   if seq.endswith('+'):
+    assert not (seq.startswith('+') or seq.startswith('-')), f'Seq has multiple +/- marks: {seq!r}'
     direction = 'forward'
     seq = seq[:-1]
     pos = len(line) - len(seq)
   elif seq.startswith('-'):
+    assert not seq.endswith('-'), f"Seq has '-' at both the start and end: {seq!r}"
     direction = 'reverse'
     seq = seq[1:]
     pos = len(line) - len(seq) + 1
+  elif seq.startswith('+'):
+    fail(f"'+' should go at end of seq, but was at start: {seq!r}")
+  elif seq.endswith('-'):
+    fail(f"'-' should go at start of seq, but was at end: {seq!r}")
   else:
-    fail('A +/- direction is required at the 3\' end of the read.')
+    fail(f'A +/- direction is required at the 3\' end of the read.\nFailed on {seq!r}')
   return seq, pos, direction
 
 
