@@ -33,6 +33,9 @@ def make_argparser():
       "(clean up if they didn't exist, leave them if they did).")
   parser.add_argument('-I', '--delete-index', action='store_true',
     help='Delete the reference index files, even if they already existed.')
+  parser.add_argument('-N', '--name-sort', dest='sort_key', action='store_const', const='name',
+    default='coord',
+    help='Sort the output BAM by name instead of coordinate.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   volume = parser.add_mutually_exclusive_group()
@@ -73,11 +76,12 @@ def main(argv):
   if format == 'bam':
     # Convert output.
     # $ samtools view -Sb align.sam | samtools sort -o - dummy > align.bam
-    convert(sam_path, out_path)
+    convert(sam_path, out_path, sort_key=args.sort_key)
 
     # Index output.
     # $ samtools index align.bam
-    index_bam(out_path)
+    if args.sort_key == 'coord':
+      index_bam(out_path)
 
     # Clean up intermediate file(s).
     os.remove(sam_path)
@@ -154,19 +158,19 @@ def clear_indices(ref_base):
 
 def index_ref(ref, ref_base):
   cmd = ('bowtie2-build', ref, ref_base)
-  logging.warning('$ '+' '.join(map(str, cmd)))
-  subprocess.call(cmd, stdout=subprocess.DEVNULL)
+  run_command(cmd)
 
 
 def align(ref_base, reads1_path, reads2_path, sam_path):
   cmd = ('bowtie2', '-x', ref_base, '-1', reads1_path, '-2', reads2_path, '-S', sam_path)
-  logging.warning('$ '+' '.join(map(str, cmd)))
-  subprocess.call(cmd)
+  run_command(cmd)
 
 
-def convert(sam_path, bam_path):
-  cmd1 = ('samtools', 'view', '-Sb', sam_path)
-  cmd2 = ('samtools', 'sort', '-o', '-', 'dummy')
+def convert(sam_path, bam_path, sort_key='coord'):
+  cmd1 = ['samtools', 'view', '-Sb', sam_path]
+  cmd2 = ['samtools', 'sort', '-o', '-', 'dummy']
+  if sort_key == 'name':
+    cmd2[2:2] = ['-n']
   logging.warning(
     '$ '+' '.join(map(str, cmd1))+' \\\n'
     +'  | '+' '.join(map(str, cmd2))+' \\\n'
@@ -176,12 +180,23 @@ def convert(sam_path, bam_path):
   with bam_path.open('wb') as bam_file:
     proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=bam_file)
   proc1.stdout.close()
+  for cmd, proc in zip((cmd1, cmd2), (proc1, proc2)):
+    if proc.wait():
+      fail(f'Error: {cmd[0]} {cmd[1]} returned with a non-zero exit code.')
 
 
 def index_bam(bam_path):
   cmd = ('samtools', 'index', bam_path)
+  if bam_path.is_file():
+    run_command(cmd)
+  else:
+    fail(f'Error: Output BAM missing ({bam_path})')
+
+
+def run_command(cmd):
   logging.warning('$ '+' '.join(map(str, cmd)))
-  subprocess.call(cmd)
+  if subprocess.call(cmd):
+    fail(f'Error: {cmd[0]} returned with a non-zero exit code.')
 
 
 def fail(message):
