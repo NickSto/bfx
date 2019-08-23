@@ -76,8 +76,7 @@ def to_ref_coord(blocks, read_coord):
       hit = read_end < read_coord <= read_start
     if hit:
       return direction * read_coord + offset
-    else:
-      return None
+  return None
   # logging.warn('No hit on read coordinate {}.'.format(read_coord))
 
 
