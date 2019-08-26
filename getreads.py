@@ -84,8 +84,8 @@ class Reader(object):
   def __init__(self, input, **kwargs):
     self.input = input
     self.input_type = detect_input_type(input)
-    if self.input_type not in ('path', 'file'):
-      raise ValueError('Input object {!r} not file-like or string-like.'.format(input))
+    if self.input_type not in ('path', 'file', 'generator'):
+      raise ValueError('Input object {!r} not a file, string, or generator.'.format(input))
     for key, value in kwargs.items():
       setattr(self, key, value)
   def __iter__(self):
