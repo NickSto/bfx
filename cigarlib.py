@@ -36,7 +36,7 @@ def main(argv):
     if args.input.endswith('.bam'):
       infile = open_bam(args.input)
     else:
-      infile = open(args.sam)
+      infile = open(args.input)
   else:
     infile = sys.stdin
 
@@ -143,10 +143,9 @@ def get_contiguous_blocks(ref_pos, cigar_list, reverse, read_len):
 
 def indel_at(position, insertions, deletions, check_insertions=True, check_deletions=True):
   """Does the read contain an indel at the given position?
-  Return True if the read contains an insertion at the given position
-  (position must be the base before the insertion event) or if the read
-  contains a deletion where the base at position is deleted. Return False
-  otherwise."""
+  Return True if the read contains an insertion at `position` (`position` must
+  be the base before the insertion event) or if the read contains a deletion
+  where the base at `position` is deleted. Return `False` otherwise."""
   if check_insertions:
     for insertion in insertions:
       if insertion[0] == position:
