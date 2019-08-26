@@ -128,7 +128,7 @@ def parse_test_align(test_name):
   )
   for data in subtests:
     print(f'{test_name} ::: {script_name} ::: {data["input"]}')
-    # $ parse-test-align.py --duplex parse-align.in.txt --ref parse-align.ref.fa \
+    # $ parse-test-align.py [--duplex] parse-align.in.txt --ref parse-align.ref.fa \
     #   --fq1 parse-align.reads_1.fq --fq2 parse-align.reads_2.fq
     cmd = [script, TESTS_DIR/data['input']] + data['args']
     for key, outname in data['outputs'].items():
