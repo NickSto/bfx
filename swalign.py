@@ -75,11 +75,22 @@ class Align(object):
     """Print a human-readable representation of the alignment."""
     start_query = str(self.start_query)
     start_target = str(self.start_target)
-    start_width = str(max(len(start_query), len(start_target)))
-    line_format = '{:'+start_width+'} {} {}'
+    start_width = max(len(start_query), len(start_target))
+    line_format = '{:'+str(start_width)+'} {} {}'
     output = line_format.format(start_target, self.target, self.end_target) + '\n'
+    output += ' '*(start_width+1) + format_matches(self.target, self.query) + '\n'
     output += line_format.format(start_query, self.query, self.end_query)
     return output
+
+
+def format_matches(target, query):
+  matches_str = ''
+  for base1, base2 in zip(target, query):
+    if base1 == base2 and base1 != '-':
+      matches_str += '|'
+    else:
+      matches_str += ' '
+  return matches_str
 
 
 # Initialize functions (define types).
@@ -87,7 +98,7 @@ swalign.smith_waterman.restype = ctypes.POINTER(AlignC)
 swalign.revcomp.restype = ctypes.c_char_p
 
 
-def smith_waterman(target_raw, query_raw):
+def smith_waterman(target_raw, query_raw, local=True, debug=False):
   if PY3:
     target_bytes = bytes(target_raw, 'utf8')
     query_bytes = bytes(query_raw, 'utf8')
@@ -95,7 +106,7 @@ def smith_waterman(target_raw, query_raw):
     target_bytes = bytes(target_raw)
     query_bytes = bytes(query_raw)
   seq_pair = SeqPairC(target_bytes, len(target_raw), query_bytes, len(query_raw))
-  align_c = swalign.smith_waterman(ctypes.pointer(seq_pair), 1).contents
+  align_c = swalign.smith_waterman(ctypes.pointer(seq_pair), bool(local), bool(debug)).contents
   return Align(align_c)
 
 
@@ -136,7 +147,8 @@ def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
   parser.add_argument('seq1')
   parser.add_argument('seq2')
-  parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
+  parser.add_argument('-l', '--local', action='store_true')
+  parser.add_argument('-L', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   volume = parser.add_mutually_exclusive_group()
   volume.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
@@ -152,10 +164,9 @@ def main(argv):
 
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
 
-  result = smith_waterman(args.seq1, args.seq2)
+  result = smith_waterman(args.seq1, args.seq2, args.local, args.volume == logging.DEBUG)
 
-  print(result.target)
-  print(result.query)
+  print(result)
 
 
 def fail(message):

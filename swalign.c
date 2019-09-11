@@ -70,7 +70,23 @@ static char get_char_comp(char c) {
 }
 
 // // works globally
-// Note: Currently the "local" flag isn't functional. It seems to always do a local alignment.
+/* Note: Turning `local` to `false` does not guarantee that you'll get a global alignment.
+ * It essentially just ensures that low-scoring segments of alignment at the end aren't omitted.
+ * When `local == false`, low-scoring segments at the beginning may still be omitted.
+ * Examples:
+ * GGTCGACTAC vs GACTACGATT, local == false:
+ *     GGTCGACTAC----
+ *     ----GACTACGATT
+ * GGTCGACTAC vs GACTACGATT, local == true:
+ *     GGTCGACTAC
+ *     ----GACTAC
+ * TTCTGATTACAGAATA vs CAACGATTACACTCCG, local = false:
+ *     TCTGATTACAGAATA--
+ *     AC-GATTACAC--TCCG
+ * TTCTGATTACAGAATA vs CAACGATTACACTCCG, local = true:
+ *     TCTGATTACA
+ *     AC-GATTACA
+ */
 static align_t *traceback(seq_pair_t *problem, matrix_t *S, bool local) {
   align_t *result = malloc(sizeof(align_t));
   seq_pair_t *seqs = malloc(sizeof(seq_pair_t));
@@ -84,9 +100,9 @@ static align_t *traceback(seq_pair_t *problem, matrix_t *S, bool local) {
   memset(c, '\0', sizeof(c));
   memset(d, '\0', sizeof(d));
 
-  // This wasn't finished by NLH. Not functioning correctly yet.
-  // It seems the purpose is to start the traceback from the place where the score reaches its
-  // maximum instead of the very end (set i and j to those coordinates).
+  // This starts the traceback from the matrix cell where the score reaches its maximum instead of
+  // the very end (bottom-right corner).
+  // It does this by setting i and j to the coordinates of the maximum-scoring cell.
   if (local == true) {
     unsigned int l, m;
     double max = FLT_MIN;
@@ -248,7 +264,7 @@ void destroy_seq_pair(seq_pair_t *pair) {
   return;
 }
 
-align_t *smith_waterman(seq_pair_t *problem, bool local) {
+align_t *smith_waterman(seq_pair_t *problem, bool local, bool debug) {
   unsigned int m = problem->alen + 1;
   unsigned int n = problem->blen + 1;
   matrix_t *S = create_matrix(m, n);
@@ -311,7 +327,9 @@ align_t *smith_waterman(seq_pair_t *problem, bool local) {
 
   result = traceback(problem, S, local);
 
-  // print_matrix(S, problem);
+  if (debug) {
+    print_matrix(S, problem);
+  }
 
   destroy_matrix(S);
 
@@ -344,7 +362,7 @@ int main(int argc, const char **argv) {
     problem.b = d;
     problem.blen = strlen(problem.b);
   
-    result = smith_waterman(&problem, false);
+    result = smith_waterman(&problem, false, false);
   
     print_alignment(result, problem.alen, problem.blen);
   }
