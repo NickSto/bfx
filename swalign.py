@@ -1,8 +1,13 @@
-import os
-import sys
-import errno
+#!/usr/bin/env python3
+from __future__ import print_function
+from __future__ import unicode_literals
+from __future__ import absolute_import
+from __future__ import division
 import ctypes
+import errno
+import os
 import string
+import sys
 PY3 = sys.version_info.major >= 3
 
 # Locate the library file.
@@ -118,3 +123,48 @@ def revcomp_inplace(seq):
   WARNING: This will alter the input string in-place!"""
   assert not PY3, 'This method is not compatible with Python 3!'
   swalign.revcomp(seq)
+
+
+########## Command-line interface ##########
+
+import argparse
+import logging
+
+DESCRIPTION = """Align two sequences with Smith-Waterman."""
+
+def make_argparser():
+  parser = argparse.ArgumentParser(description=DESCRIPTION)
+  parser.add_argument('seq1')
+  parser.add_argument('seq2')
+  parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
+    help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
+  volume = parser.add_mutually_exclusive_group()
+  volume.add_argument('-q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
+    default=logging.WARNING)
+  volume.add_argument('-v', '--verbose', dest='volume', action='store_const', const=logging.INFO)
+  volume.add_argument('-D', '--debug', dest='volume', action='store_const', const=logging.DEBUG)
+  return parser
+
+
+def main(argv):
+  parser = make_argparser()
+  args = parser.parse_args(argv[1:])
+
+  logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
+
+  result = smith_waterman(args.seq1, args.seq2)
+
+  print(result.target)
+  print(result.query)
+
+
+def fail(message):
+  logging.critical(message)
+  if __name__ == '__main__':
+    sys.exit(1)
+  else:
+    raise Exception('Unrecoverable error')
+
+
+if __name__ == '__main__':
+  sys.exit(main(sys.argv))
