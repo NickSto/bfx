@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import distutils.spawn
+import distutils.version
 import logging
 import os
 import pathlib
@@ -199,7 +200,13 @@ def index_ref(aligner, ref, ref_base, threads=1):
   kwargs = {}
   if aligner == 'bowtie2':
     # $ bowtie2-build ref.fa ref
-    cmd = ('bowtie2-build', '--threads', threads, ref, ref_base)
+    cmd = ['bowtie2-build']
+    version = get_bowtie2_version()
+    if version is None:
+      logging.warning('Warning: Unable to determine bowtie2 version.')
+    elif version >= distutils.version.LooseVersion('2.2.7'):
+      cmd.extend(['--threads', threads])
+    cmd.extend([ref, ref_base])
     kwargs['stdout'] = subprocess.DEVNULL
   elif aligner == 'bwa':
     # $ bwa index -a algo -p ref ref.fa
@@ -256,6 +263,32 @@ def index_bam(bam_path):
     run_command(cmd)
   else:
     fail(f'Error: Output BAM missing ({bam_path})')
+
+
+def get_bowtie2_version():
+  cmd = ('bowtie2-build', '--version')
+  result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+  if result.returncode != 0:
+    return None
+  output = str(result.stdout, 'utf8')
+  line_fields = None
+  for line_num, line in enumerate(output.splitlines()):
+    if line_num == 0:
+      line_fields = line.split()
+      if not line_fields:
+        continue
+      exe_path = pathlib.Path(line_fields[0])
+      if exe_path.name.startswith('bowtie2-build'):
+        break
+  if line_fields is None:
+    return None
+  ver_str = line_fields[-1]
+  ver_fields = ver_str.split('.')
+  if len(ver_fields) > 1 and ver_fields[0] == '2':
+    logging.info(f'Info: Successfully determined bowtie2 version to be {ver_str}.')
+    return distutils.version.LooseVersion(ver_str)
+  else:
+    return None
 
 
 def run_command(cmd, **kwargs):
