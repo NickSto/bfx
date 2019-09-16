@@ -42,6 +42,10 @@ def make_argparser():
   parser.add_argument('-c', '--clobber', action='store_true',
     help='Overwrite intermediate and output files without prompting. Otherwise, the script will '
       'fail if one of these files already exists.')
+  parser.add_argument('-R', '--ref-base',
+    help='The base path for the reference index. E.g. "-R path/to/ref" if your index files are '
+      'named like "path/to/ref.bwt" and "path/to/ref.pac". Default: the same path as the actual '
+      'reference file.')
   parser.add_argument('-i', '--keep-index', action='store_true',
     help="Don't delete the reference index files. Default: leave it as you found it "
       "(clean up if they didn't exist, leave them if they did).")
@@ -87,8 +91,12 @@ def main(argv):
     fail("Error: Missing required command(s) '"+"', '".join(missing)+"'.")
 
   # Determine paths.
+  if args.ref_base:
+    ref_base = args.ref_base
+  else:
+    ref_base = str(args.ref)
   format = get_format(args.out, args.format)
-  ref_base, sam_path, out_path = get_paths(args.ref, args.reads1, args.out, format)
+  sam_path, out_path = get_paths(args.reads1, args.out, format)
   if not args.clobber:
     for path in sam_path, out_path:
       if path.exists():
@@ -126,8 +134,7 @@ def main(argv):
     fail(f'Error: Output file missing {str(out_path)!r}')
 
 
-def get_paths(ref_arg, reads1_arg, out_arg, format):
-  ref_base = get_ref_base(ref_arg)
+def get_paths(reads1_arg, out_arg, format):
   base = get_reads_base(reads1_arg)
   if format == 'sam':
     if out_arg:
@@ -141,12 +148,7 @@ def get_paths(ref_arg, reads1_arg, out_arg, format):
       out_path = out_arg
     else:
       out_path = pathlib.Path(base+'.bam')
-  return ref_base, sam_path, out_path
-
-
-def get_ref_base(ref_path):
-  basename = ref_path.stem
-  return str(ref_path.parent / basename)
+  return sam_path, out_path
 
 
 def get_reads_base(reads_path):
