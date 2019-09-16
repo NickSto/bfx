@@ -51,6 +51,9 @@ def make_argparser():
       "(clean up if they didn't exist, leave them if they did).")
   parser.add_argument('-I', '--delete-index', action='store_true',
     help='Delete the reference index files, even if they already existed.')
+  parser.add_argument('-t', '--threads', type=int, default=1,
+    help='Threads to use when aligning. For bowtie2, this also speeds up indexing. '
+      'Default: %(default)s')
   opts_str = ''
   for aligner, data in ALIGNER_DATA.items():
     opts = data.get('opts')
@@ -107,10 +110,13 @@ def main(argv):
   # Index reference (if needed).
   if not was_indexed:
     clear_indices(args.aligner, ref_base)
-    index_ref(args.aligner, args.ref, ref_base)
+    index_ref(args.aligner, args.ref, ref_base, threads=args.threads)
 
   # Do alignment.
-  align(args.aligner, ref_base, args.reads1, args.reads2, sam_path, opts=args.aligner_opts)
+  align(
+    args.aligner, ref_base, args.reads1, args.reads2, sam_path, threads=args.threads,
+    opts=args.aligner_opts
+  )
 
   if format == 'bam':
     # Convert output.
@@ -189,11 +195,11 @@ def clear_indices(aligner, ref_base):
       os.remove(ref_path_str)
 
 
-def index_ref(aligner, ref, ref_base):
+def index_ref(aligner, ref, ref_base, threads=1):
   kwargs = {}
   if aligner == 'bowtie2':
     # $ bowtie2-build ref.fa ref
-    cmd = ('bowtie2-build', ref, ref_base)
+    cmd = ('bowtie2-build', '--threads', threads, ref, ref_base)
     kwargs['stdout'] = subprocess.DEVNULL
   elif aligner == 'bwa':
     # $ bwa index -a algo -p ref ref.fa
@@ -205,16 +211,19 @@ def index_ref(aligner, ref, ref_base):
   run_command(cmd, **kwargs)
 
 
-def align(aligner, ref_base, reads1_path, reads2_path, sam_path, opts=None):
+def align(aligner, ref_base, reads1_path, reads2_path, sam_path, threads=1, opts=None):
   if opts is None:
     opts = ALIGNER_DATA[aligner]['opts']
   if aligner == 'bowtie2':
     # $ bowtie2 -x ref -1 reads_1.fq -2 reads_2.fq -S align.sam
-    cmd = ['bowtie2'] + opts + ['-x', ref_base, '-1', reads1_path, '-2', reads2_path, '-S', sam_path]
+    cmd = (
+      ['bowtie2'] + opts +
+      ['-p', threads, '-x', ref_base, '-1', reads1_path, '-2', reads2_path, '-S', sam_path]
+    )
     run_command(cmd)
   elif aligner == 'bwa':
     # $ bwa mem [opts] ref reads_1.fq reads_2.fq > align.sam
-    cmd = ['bwa', 'mem'] + opts + [ref_base, reads1_path, reads2_path]
+    cmd = ['bwa', 'mem'] + opts + ['-t', threads, ref_base, reads1_path, reads2_path]
     with sam_path.open('wb') as sam_file:
       run_command(cmd, stdout=sam_file)
 
@@ -250,8 +259,9 @@ def index_bam(bam_path):
 
 
 def run_command(cmd, **kwargs):
-  logging.warning('$ '+' '.join(map(str, cmd)))
-  if subprocess.call(cmd, **kwargs):
+  cmd_strs = [str(arg) for arg in cmd]
+  logging.warning('$ '+' '.join(cmd_strs))
+  if subprocess.call(cmd_strs, **kwargs):
     fail(f'Error: {cmd[0]} returned with a non-zero exit code.')
 
 
