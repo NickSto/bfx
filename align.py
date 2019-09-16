@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import distutils.spawn
 import logging
 import os
 import pathlib
@@ -7,8 +8,17 @@ import subprocess
 import sys
 assert sys.version_info.major >= 3, 'Python 3 required'
 
-INDEX_ENDINGS = {
-  'bowtie2':('1.bt2', '2.bt2', '3.bt2', '4.bt2', 'rev.1.bt2', 'rev.2.bt2')
+ALIGNER_DATA = {
+  'bowtie2': {
+    'required': ('bowtie2-build', 'bowtie2'),
+    'index-endings': ('1.bt2', '2.bt2', '3.bt2', '4.bt2', 'rev.1.bt2', 'rev.2.bt2'),
+    'opts': [],
+  },
+  'bwa': {
+    'required': ('bwa',),
+    'index-endings': ('amb', 'ann', 'bwt', 'pac', 'sa'),
+    'opts': ['-M'],
+  },
 }
 DESCRIPTION = """Align reads.
 This will automatically run all the commands needed to get you from raw reads to an indexed BAM
@@ -17,8 +27,8 @@ file, including indexing the reference sequence."""
 
 def make_argparser():
   parser = argparse.ArgumentParser(description=DESCRIPTION)
-  parser.add_argument('aligner', choices=('bowtie2',),
-    help='Aligner to use. Currently only works with bowtie2.')
+  parser.add_argument('aligner', choices=ALIGNER_DATA.keys(),
+    help="Aligner to use. 'bwa' will use BWA-MEM.")
   parser.add_argument('ref', metavar='ref.fa', type=pathlib.Path,
     help='Reference sequence.')
   parser.add_argument('reads1', metavar='reads_1.fq', type=pathlib.Path,
@@ -37,6 +47,17 @@ def make_argparser():
       "(clean up if they didn't exist, leave them if they did).")
   parser.add_argument('-I', '--delete-index', action='store_true',
     help='Delete the reference index files, even if they already existed.')
+  opts_str = ''
+  for aligner, data in ALIGNER_DATA.items():
+    opts = data.get('opts')
+    if opts:
+      if opts_str:
+        opts_str += ', '
+      opts_str += "'"+' '.join(opts)+f"' for '{aligner}'"
+  parser.add_argument('-O', '--aligner-opts', type=split_opt_list,
+    help="Options to pass to the alignment command. If giving a single option, prepend '|' to "
+      "keep it from being parsed as an argument to this script. E.g. \"-O '|-M'\". "
+      'Defaults: '+opts_str+', none for the rest.')
   parser.add_argument('-N', '--name-sort', dest='sort_key', action='store_const', const='name',
     default='coord',
     help='Sort the output BAM by name instead of coordinate.')
@@ -57,25 +78,31 @@ def main(argv):
 
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
 
+  # Check for required commands.
+  missing = []
+  for command in ALIGNER_DATA[args.aligner]['required']:
+    if not distutils.spawn.find_executable(command):
+      missing.append(command)
+  if missing:
+    fail("Error: Missing required command(s) '"+"', '".join(missing)+"'.")
+
   # Determine paths.
   format = get_format(args.out, args.format)
   ref_base, sam_path, out_path = get_paths(args.ref, args.reads1, args.out, format)
   if not args.clobber:
     for path in sam_path, out_path:
       if path.exists():
-        fail(f'Error: output path {path} already exists.')
+        fail(f'Error: output path {path} already exists. Use -c/--clobber to overwrite.')
 
   was_indexed = is_indexed(args.aligner, ref_base)
 
   # Index reference (if needed).
-  # $ bowtie2-build ref.fa ref
   if not was_indexed:
     clear_indices(args.aligner, ref_base)
     index_ref(args.aligner, args.ref, ref_base)
 
   # Do alignment.
-  # $ bowtie2 -x ref -1 reads_1.fq -2 reads_2.fq -S align.sam
-  align(args.aligner, ref_base, args.reads1, args.reads2, sam_path)
+  align(args.aligner, ref_base, args.reads1, args.reads2, sam_path, opts=args.aligner_opts)
 
   if format == 'bam':
     # Convert output.
@@ -143,7 +170,7 @@ def get_format(out_arg, format_arg):
 
 
 def is_indexed(aligner, ref_base):
-  for ending in INDEX_ENDINGS[aligner]:
+  for ending in ALIGNER_DATA[aligner]['index-endings']:
     ref_path_str = ref_base+'.'+ending
     if os.path.exists(ref_path_str):
       if not os.path.isfile(ref_path_str):
@@ -154,7 +181,7 @@ def is_indexed(aligner, ref_base):
 
 
 def clear_indices(aligner, ref_base):
-  for ending in INDEX_ENDINGS[aligner]:
+  for ending in ALIGNER_DATA[aligner]['index-endings']:
     ref_path_str = ref_base+'.'+ending
     if os.path.isfile(ref_path_str):
       os.remove(ref_path_str)
@@ -163,15 +190,31 @@ def clear_indices(aligner, ref_base):
 def index_ref(aligner, ref, ref_base):
   kwargs = {}
   if aligner == 'bowtie2':
+    # $ bowtie2-build ref.fa ref
     cmd = ('bowtie2-build', ref, ref_base)
     kwargs['stdout'] = subprocess.DEVNULL
+  elif aligner == 'bwa':
+    # $ bwa index -a algo -p ref ref.fa
+    if os.path.getsize(ref) < 2000000000:
+      algorithm = 'is'
+    else:
+      algorithm = 'bwtsw'
+    cmd = ('bwa', 'index', '-a', algorithm, '-p', ref_base, ref)
   run_command(cmd, **kwargs)
 
 
-def align(aligner, ref_base, reads1_path, reads2_path, sam_path):
+def align(aligner, ref_base, reads1_path, reads2_path, sam_path, opts=None):
+  if opts is None:
+    opts = ALIGNER_DATA[aligner]['opts']
   if aligner == 'bowtie2':
-    cmd = ('bowtie2', '-x', ref_base, '-1', reads1_path, '-2', reads2_path, '-S', sam_path)
-  run_command(cmd)
+    # $ bowtie2 -x ref -1 reads_1.fq -2 reads_2.fq -S align.sam
+    cmd = ['bowtie2'] + opts + ['-x', ref_base, '-1', reads1_path, '-2', reads2_path, '-S', sam_path]
+    run_command(cmd)
+  elif aligner == 'bwa':
+    # $ bwa mem [opts] ref reads_1.fq reads_2.fq > align.sam
+    cmd = ['bwa', 'mem'] + opts + [ref_base, reads1_path, reads2_path]
+    with sam_path.open('wb') as sam_file:
+      run_command(cmd, stdout=sam_file)
 
 
 def convert(sam_path, bam_path, sort_key='coord'):
@@ -194,6 +237,9 @@ def convert(sam_path, bam_path, sort_key='coord'):
 
 
 def index_bam(bam_path):
+  index_path = bam_path.parent / (bam_path.name+'.bai')
+  if index_path.exists():
+    os.remove(index_path)
   cmd = ('samtools', 'index', bam_path)
   if bam_path.is_file():
     run_command(cmd)
@@ -205,6 +251,11 @@ def run_command(cmd, **kwargs):
   logging.warning('$ '+' '.join(map(str, cmd)))
   if subprocess.call(cmd, **kwargs):
     fail(f'Error: {cmd[0]} returned with a non-zero exit code.')
+
+
+def split_opt_list(opts_str):
+  opts_str2 = opts_str.lstrip('|')
+  return opts_str2.split()
 
 
 def fail(message):
