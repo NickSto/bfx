@@ -1,5 +1,9 @@
 # A very simple module to hold code for quick parsing of SAM file fields
 import re
+try:
+  import cigarlib
+except ImportError:
+  from bfx import cigarlib
 
 __version__ = '0.8'
 NULL_STR = '*'
@@ -41,6 +45,24 @@ class Alignment(object):
           setattr(self, name, kwargs[name])
       if 'tags' in kwargs:
         self.tags = tags
+    self._length = None
+  # Okay, here's the only non-simple bit:
+  @property
+  def length(self):
+    if self._length is None:
+      self._length = self._compute_read_length(self.seq, self.cigar)
+    return self._length
+  @classmethod
+  def _compute_read_length(cls, seq, cigar):
+    """Compute the read length from the length of the SEQ field plus any hard-clipped bases."""
+    length = len(seq)
+    if cigar is None:
+      return length
+    actions = cigarlib.split_cigar(cigar)
+    for oplen, op in actions:
+      if op == 'H':
+        length += oplen
+    return length
 
 
 def read(filehandle, header=False):
