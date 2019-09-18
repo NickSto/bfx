@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import distutils.spawn
-import distutils.version
+from distutils.version import LooseVersion
 import logging
 import os
 import pathlib
@@ -39,7 +39,8 @@ def make_argparser():
   parser.add_argument('-o', '--out', type=pathlib.Path,
     help='Output file. The aligned BAM will be written to this path.')
   parser.add_argument('-f', '--format', choices=('sam', 'bam'),
-    help='Output format.')
+    help="Output format. If this option isn't given, and a filename ending in '.sam' is given to "
+      '--out, it will output SAM. Otherwise it will default to BAM.')
   parser.add_argument('-c', '--clobber', action='store_true',
     help='Overwrite intermediate and output files without prompting. Otherwise, the script will '
       'fail if one of these files already exists.')
@@ -53,8 +54,8 @@ def make_argparser():
   parser.add_argument('-I', '--delete-index', action='store_true',
     help='Delete the reference index files, even if they already existed.')
   parser.add_argument('-t', '--threads', type=int, default=1,
-    help='Threads to use when aligning. For bowtie2, this also speeds up indexing. '
-      'Default: %(default)s')
+    help='Threads to use when aligning. For bowtie2, this also speeds up indexing. For modern '
+      'versions of samtools (>= 1.0), this speeds up sorting. Default: %(default)s')
   opts_str = ''
   for aligner, data in ALIGNER_DATA.items():
     opts = data.get('opts')
@@ -121,11 +122,9 @@ def main(argv):
 
   if format == 'bam':
     # Convert output.
-    # $ samtools view -Sb align.sam | samtools sort -o - dummy > align.bam
-    convert(sam_path, out_path, sort_key=args.sort_key)
+    convert(sam_path, out_path, sort_key=args.sort_key, threads=args.threads)
 
     # Index output.
-    # $ samtools index align.bam
     if args.sort_key == 'coord':
       index_bam(out_path)
 
@@ -204,7 +203,7 @@ def index_ref(aligner, ref, ref_base, threads=1):
     version = get_bowtie2_version()
     if version is None:
       logging.warning('Warning: Unable to determine bowtie2 version.')
-    elif version >= distutils.version.LooseVersion('2.2.7'):
+    elif version >= LooseVersion('2.2.7'):
       cmd.extend(['--threads', threads])
     cmd.extend([ref, ref_base])
     kwargs['stdout'] = subprocess.DEVNULL
@@ -236,14 +235,29 @@ def align(aligner, ref_base, reads1_path, reads2_path, sam_path, threads=1, opts
       run_command(cmd, stdout=sam_file)
 
 
-def convert(sam_path, bam_path, sort_key='coord'):
+def convert(sam_path, bam_path, sort_key='coord', threads=1):
+  # $ samtools view -Sb align.sam | samtools sort -o - dummy > align.bam
+  #     --- or ---
+  # $ samtools view -Sb align.sam | samtools sort -O bam - > align.bam
+  version = get_samtools_version()
+  if version is None:
+    logging.warning('Warning: Unable to determine samtools version.')
   cmd1 = ['samtools', 'view', '-Sb', sam_path]
-  cmd2 = ['samtools', 'sort', '-o', '-', 'dummy']
+  # New samtools sort call format introduced in 0.2.0-rc9.
+  if version is not None and version < LooseVersion('0.2.0-rc9'):
+    cmd2 = ['samtools', 'sort', '-o', '-', 'dummy']
+  else:
+    cmd2 = ['samtools', 'sort', '-O', 'bam', '-']
+  # -@ argument introduced sometime between 0.1.19 and 1.0.
+  if version is not None and version > LooseVersion('1.0'):
+    cmd2[2:2] = ['-@', threads]
   if sort_key == 'name':
     cmd2[2:2] = ['-n']
+  cmd1 = [str(arg) for arg in cmd1]
+  cmd2 = [str(arg) for arg in cmd2]
   logging.warning(
-    '$ '+' '.join(map(str, cmd1))+' \\\n'
-    +'  | '+' '.join(map(str, cmd2))+' \\\n'
+    '$ '+' '.join(cmd1)+' \\\n'
+    +'  | '+' '.join(cmd2)+' \\\n'
     +'  > '+str(bam_path)
   )
   proc1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
@@ -256,6 +270,7 @@ def convert(sam_path, bam_path, sort_key='coord'):
 
 
 def index_bam(bam_path):
+  # $ samtools index align.bam
   index_path = bam_path.parent / (bam_path.name+'.bai')
   if index_path.exists():
     os.remove(index_path)
@@ -291,7 +306,7 @@ def get_samtools_version(exe='samtools'):
   except ValueError:
     return None
   logging.info(f'Info: Successfully determined samtools version to be {ver_str}.')
-  return distutils.version.LooseVersion(ver_str)
+  return LooseVersion(ver_str)
 
 
 def get_bowtie2_version(exe='bowtie2-build'):
@@ -319,7 +334,7 @@ def get_bowtie2_version(exe='bowtie2-build'):
   ver_fields = ver_str.split('.')
   if len(ver_fields) > 1 and ver_fields[0] == '2':
     logging.info(f'Info: Successfully determined bowtie2 version to be {ver_str}.')
-    return distutils.version.LooseVersion(ver_str)
+    return LooseVersion(ver_str)
   else:
     return None
 
