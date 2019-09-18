@@ -210,6 +210,7 @@ def index_ref(aligner, ref, ref_base, threads=1):
     kwargs['stdout'] = subprocess.DEVNULL
   elif aligner == 'bwa':
     # $ bwa index -a algo -p ref ref.fa
+    # Use the 'is' indexing algorithm, unless the reference is > 2GB.
     if os.path.getsize(ref) < 2000000000:
       algorithm = 'is'
     else:
@@ -265,12 +266,41 @@ def index_bam(bam_path):
     fail(f'Error: Output BAM missing ({bam_path})')
 
 
-def get_bowtie2_version():
-  cmd = ('bowtie2-build', '--version')
+def get_samtools_version(exe='samtools'):
+  cmd = (exe,)
+  result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+  if result.returncode != 1:
+    return None
+  output = str(result.stderr, 'utf8')
+  # Find the version line.
+  line_fields = None
+  for line in output.splitlines():
+    if line.lower().startswith('version:'):
+      line_fields = line.split()
+  if line_fields is None:
+    return None
+  # Find the version number in the line.
+  ver_str = line_fields[1]
+  # Verify it looks like a version number: does it start with two decimal-separated integers?
+  ver_fields = ver_str.split('.')
+  if len(ver_fields) <= 1:
+    return None
+  try:
+    int(ver_fields[0])
+    int(ver_fields[1])
+  except ValueError:
+    return None
+  logging.info(f'Info: Successfully determined samtools version to be {ver_str}.')
+  return distutils.version.LooseVersion(ver_str)
+
+
+def get_bowtie2_version(exe='bowtie2-build'):
+  cmd = (exe, '--version')
   result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
   if result.returncode != 0:
     return None
   output = str(result.stdout, 'utf8')
+  # Find the version line.
   line_fields = None
   for line_num, line in enumerate(output.splitlines()):
     if line_num == 0:
@@ -282,7 +312,10 @@ def get_bowtie2_version():
         break
   if line_fields is None:
     return None
+  # Find the version number in the line.
   ver_str = line_fields[-1]
+  # Verify it looks like the right version number:
+  # Is it at least two decimal-delimited fields, the first of which is 2?
   ver_fields = ver_str.split('.')
   if len(ver_fields) > 1 and ver_fields[0] == '2':
     logging.info(f'Info: Successfully determined bowtie2 version to be {ver_str}.')
