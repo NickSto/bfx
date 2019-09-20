@@ -32,6 +32,14 @@ given as two lines: '--min-jobs' and '8'."""
 def make_argparser():
   parser = argparse.ArgumentParser(usage=USAGE, description=DESCRIPTION, epilog=EPILOG,
     fromfile_prefix_chars='@')
+  parser.add_argument('-o', '--output', choices=('min', 'max'),
+    help="Choose a node with free resources to run on and print it to stdout. Give either 'min' or "
+      "'max' to indicate whether to choose the node with the most or least number of idle CPUs. "
+      'Give --cpus-req to indicate how many CPUs the job requires. Only nodes with at least this '
+      'many CPUs will be considered.')
+  parser.add_argument('-C', '--cpus', type=int, default=1,
+    help="How many CPUs are required by the job we're waiting to start. Used when choosing a node "
+      'to print with --output.')
   parser.add_argument('-q', '--wait-for-job',
     help="Wait until the job with this name has begun. Useful if you just launched one and don't "
       "want to keep queueing jobs if they're not running.")
@@ -41,7 +49,7 @@ def make_argparser():
   parser.add_argument('-c', '--min-idle-cpus', default=0,
     help='Keep this many CPUs idle: if only this many are idle, wait. Can give a number or a file '
       'containing the number (and nothing else).')
-  parser.add_argument('-s', '--min-node-size', default=0,
+  parser.add_argument('-s', '--min-node-size', default=1,
     help="Minimum node size when counting available resources for the above thresholds. Don't "
       'consider nodes with fewer than this many CPUs. Can give a number or a file containing the '
       'number (and nothing else).')
@@ -91,6 +99,10 @@ def main(argv):
     wait_for_cpus(thresholds, args.check_interval)
   wait_for_pause_file(args.pause_file, args.check_interval)
 
+  if args.output:
+    node = get_idle('node', args.cpus, args.output)
+    print(node)
+
 
 def wait_for_job(job_name, check_interval):
   if job_name:
@@ -120,11 +132,11 @@ def wait_for_jobs(thresholds, check_interval):
 def wait_for_nodes(thresholds, check_interval):
   if thresholds.min_idle_nodes:
     printed = False
-    while count_idle('nodes', thresholds.min_node_size_nodes) < thresholds.min_idle_nodes:
+    while get_idle('nodes', thresholds.min_node_size_nodes) < thresholds.min_idle_nodes:
       if not printed:
         print(
           'Too few nodes idle ({} < {})'
-          .format(count_idle('nodes', thresholds.min_node_size_nodes), thresholds.min_idle_nodes)
+          .format(get_idle('nodes', thresholds.min_node_size_nodes), thresholds.min_idle_nodes)
         )
         printed = True
       time.sleep(check_interval)
@@ -133,11 +145,11 @@ def wait_for_nodes(thresholds, check_interval):
 def wait_for_cpus(thresholds, check_interval):
   if thresholds.min_idle_cpus:
     printed = False
-    while count_idle('cpus', thresholds.min_node_size_cpus) < thresholds.min_idle_cpus:
+    while get_idle('cpus', thresholds.min_node_size_cpus) < thresholds.min_idle_cpus:
       if not printed:
         print(
           'Too few cpus idle ({} < {})'
-          .format(count_idle('cpus', thresholds.min_node_size_cpus), thresholds.min_idle_cpus)
+          .format(get_idle('cpus', thresholds.min_node_size_cpus), thresholds.min_idle_cpus)
         )
         printed = True
       time.sleep(check_interval)
@@ -191,27 +203,48 @@ def parse_file_or_value(raw_value, coerce_type):
   return None, path
 
 
-def count_idle(resource, min_node_size=None):
+def get_idle(resource, min_node_size=None, chooser=max):
   assert resource in ('cpus', 'nodes'), resource
+  assert hasattr(chooser, '__call__') or chooser in ('min', 'max'), chooser
+  if not hasattr(chooser, '__call__'):
+    if chooser == 'min':
+      chooser = min
+    elif chooser == 'max':
+      chooser = max
   idle = 0
+  best_cpus = None
   cmd = ('sinfo', '-h', '-p', 'general', '-t', 'idle,alloc', '-o', '%n %C')
   stdout = run_command(cmd, 'Error: Problem getting CPU usage info.')
   for line in stdout.splitlines():
     major_fields = line.split()
     if len(major_fields) != 2:
       continue
+    node_name = major_fields[0]
     minor_fields = major_fields[1].split('/')
     if len(minor_fields) != 4:
       continue
-    if min_node_size is not None:
+    try:
+      node_idle = int(minor_fields[1])
       node_size = int(minor_fields[3])
+    except ValueError:
+      continue
+    if min_node_size is not None:
       if node_size < min_node_size:
         continue
     if resource == 'cpus':
-      idle += int(minor_fields[1])
+      idle += node_idle
     elif resource == 'nodes':
-      if minor_fields[1] == minor_fields[3]:
+      if node_idle == node_size:
         idle += 1
+    elif resource == 'node':
+      if best_cpus is None:
+        best_cpus = node_idle
+        idle = node_name
+      else:
+        result = chooser(node_idle, best_cpus)
+        if result != best_cpus:
+          best_cpus = node_idle
+          idle = node_name
   return idle
 
 
