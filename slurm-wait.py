@@ -19,12 +19,19 @@ THRESHOLDS = {
 }
 USER = getpass.getuser()
 PAUSE_TIME = 10
+USAGE = """$ %(prog)s [thresholds]
+       $ %(prog)s @path/to/args.txt"""
 DESCRIPTION = """Determine whether we should keep launching slurm jobs, based on available
 resources. Launch this and it will sleep until enough resources are available."""
+EPILOG = """You can also give arguments via a file. Just give the path to the file as an argument,
+prepended by '@'. The file will be read, and each line will be interpreted as a regular argument to
+this script. Remember to put literally every argument on its own line, so '--min-jobs 8' should be
+given as two lines: '--min-jobs' and '8'."""
 
 
 def make_argparser():
-  parser = argparse.ArgumentParser(description=DESCRIPTION)
+  parser = argparse.ArgumentParser(usage=USAGE, description=DESCRIPTION, epilog=EPILOG,
+    fromfile_prefix_chars='@')
   parser.add_argument('-q', '--wait-for-job',
     help="Wait until the job with this name has begun. Useful if you just launched one and don't "
       "want to keep queueing jobs if they're not running.")
@@ -54,9 +61,6 @@ def make_argparser():
     help='Wait if this file exists. Can be used as a manual pause button.')
   parser.add_argument('-i', '--check-interval', type=int, default=15,
     help='How many seconds to wait between checks for available resources.')
-  #TODO:
-  # parser.add_argument('config', metavar='config.ini',
-  #   help='File containing the thresholds.')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   volume = parser.add_mutually_exclusive_group()
