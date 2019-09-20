@@ -8,7 +8,7 @@ import sys
 import time
 assert sys.version_info.major >= 3, 'Python 3 required'
 
-THRESHOLDS = {
+PARAMS = {
   'min_idle_nodes':int,
   'min_idle_cpus':int,
   'min_node_size':int,
@@ -19,7 +19,7 @@ THRESHOLDS = {
 }
 USER = getpass.getuser()
 PAUSE_TIME = 10
-USAGE = """$ %(prog)s [thresholds]
+USAGE = """$ %(prog)s [parameters]
        $ %(prog)s @path/to/args.txt"""
 DESCRIPTION = """Determine whether we should keep launching slurm jobs, based on available
 resources. Launch this and it will sleep until enough resources are available."""
@@ -86,17 +86,17 @@ def main(argv):
 
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
 
-  thresholds = Thresholds(args)
-  thresholds.subdivide_thres('min_node_size', ('min_node_size_cpus', 'min_node_size_nodes'))
+  params = Parameters(args)
+  params.subdivide_param('min_node_size', ('min_node_size_cpus', 'min_node_size_nodes'))
 
-  if thresholds.max_jobs is not None and thresholds.min_jobs >= thresholds.max_jobs:
-    fail(f'Error: --min-jobs must be < --max-jobs ({thresholds.min_jobs} >= {thresholds.max_jobs}).')
+  if params.max_jobs is not None and params.min_jobs >= params.max_jobs:
+    fail(f'Error: --min-jobs must be < --max-jobs ({params.min_jobs} >= {params.max_jobs}).')
 
   wait_for_job(args.wait_for_job, args.check_interval)
-  wait_for_jobs(thresholds, args.check_interval)
-  if count_running_jobs() >= thresholds.min_jobs:
-    wait_for_nodes(thresholds, args.check_interval)
-    wait_for_cpus(thresholds, args.check_interval)
+  wait_for_jobs(params, args.check_interval)
+  if count_running_jobs() >= params.min_jobs:
+    wait_for_nodes(params, args.check_interval)
+    wait_for_cpus(params, args.check_interval)
   wait_for_pause_file(args.pause_file, args.check_interval)
 
   if args.output:
@@ -119,37 +119,37 @@ def wait_for_job(job_name, check_interval):
       first_loop = False
 
 
-def wait_for_jobs(thresholds, check_interval):
-  if thresholds.max_jobs is not None:
+def wait_for_jobs(params, check_interval):
+  if params.max_jobs is not None:
     printed = False
-    while count_running_jobs() >= thresholds.max_jobs:
+    while count_running_jobs() >= params.max_jobs:
       if not printed:
-        print('Too many jobs running ({} >= {})'.format(count_running_jobs(), thresholds.max_jobs))
+        print('Too many jobs running ({} >= {})'.format(count_running_jobs(), params.max_jobs))
         printed = True
       time.sleep(check_interval)
 
 
-def wait_for_nodes(thresholds, check_interval):
-  if thresholds.min_idle_nodes:
+def wait_for_nodes(params, check_interval):
+  if params.min_idle_nodes:
     printed = False
-    while get_idle('nodes', thresholds.min_node_size_nodes) < thresholds.min_idle_nodes:
+    while get_idle('nodes', params.min_node_size_nodes) < params.min_idle_nodes:
       if not printed:
         print(
           'Too few nodes idle ({} < {})'
-          .format(get_idle('nodes', thresholds.min_node_size_nodes), thresholds.min_idle_nodes)
+          .format(get_idle('nodes', params.min_node_size_nodes), params.min_idle_nodes)
         )
         printed = True
       time.sleep(check_interval)
 
 
-def wait_for_cpus(thresholds, check_interval):
-  if thresholds.min_idle_cpus:
+def wait_for_cpus(params, check_interval):
+  if params.min_idle_cpus:
     printed = False
-    while get_idle('cpus', thresholds.min_node_size_cpus) < thresholds.min_idle_cpus:
+    while get_idle('cpus', params.min_node_size_cpus) < params.min_idle_cpus:
       if not printed:
         print(
           'Too few cpus idle ({} < {})'
-          .format(get_idle('cpus', thresholds.min_node_size_cpus), thresholds.min_idle_cpus)
+          .format(get_idle('cpus', params.min_node_size_cpus), params.min_idle_cpus)
         )
         printed = True
       time.sleep(check_interval)
@@ -164,17 +164,17 @@ def wait_for_pause_file(pause_path, check_interval):
     time.sleep(check_interval)
 
 
-class Thresholds:
+class Params:
 
   def __init__(self, args):
     self.values = {}
-    for thres_name, thres_type in THRESHOLDS.items():
-      thres_raw_value = getattr(args, thres_name)
-      thres_value, thres_path = parse_file_or_value(thres_raw_value, thres_type)
-      if thres_value is None and thres_path is None:
-        self.values[thres_name] = None
+    for name, ptype in PARAMS.items():
+      raw_value = getattr(args, name)
+      value, path = parse_file_or_value(raw_value, ptype)
+      if value is None and path is None:
+        self.values[name] = None
       else:
-        self.values[thres_name] = {'value':thres_value, 'path':thres_path, 'type':thres_type}
+        self.values[name] = {'value':value, 'path':path, 'type':ptype}
 
   def __getattr__(self, name):
     if self.values[name] is None:
@@ -184,8 +184,8 @@ class Thresholds:
     elif self.values[name]['path'] is not None:
       return read_file(self.values[name]['path'], self.values[name]['type'])
 
-  def subdivide_thres(self, main, specifics):
-    """Use the value of threshold `main` as the default value for thresholds `specifics`."""
+  def subdivide_param(self, main, specifics):
+    """Use the value of parameter `main` as the default value for parameters `specifics`."""
     for specific in specifics:
       if self.values[specific] is None:
         self.values[specific] = self.values[main].copy()
