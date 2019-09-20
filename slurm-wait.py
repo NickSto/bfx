@@ -74,11 +74,11 @@ def main(argv):
 
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
 
-  if args.max_jobs is not None and args.min_jobs >= args.max_jobs:
-    fail('Error: --min-jobs must be < --max-jobs.')
-
   thresholds = Thresholds(args)
   thresholds.subdivide_thres('min_node_size', ('min_node_size_cpus', 'min_node_size_nodes'))
+
+  if thresholds.max_jobs is not None and thresholds.min_jobs >= thresholds.max_jobs:
+    fail(f'Error: --min-jobs must be < --max-jobs ({thresholds.min_jobs} >= {thresholds.max_jobs}).')
 
   wait_for_job(args.wait_for_job, args.check_interval)
   wait_for_jobs(thresholds, args.check_interval)
