@@ -60,6 +60,8 @@ def open_bam(bam_path):
 
 def split_cigar(cigar):
   cigar_list = []
+  if cigar is None or cigar == '*':
+    return cigar_list
   bits = re.findall(r'\d+[A-Z=]', cigar)
   for bit in bits:
     op_char = bit[-1:]
