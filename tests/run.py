@@ -93,14 +93,17 @@ def getreads_smoke(test_name):
   )
   for input_name, output_name in test_pairs:
     print(f'{test_name} ::: {script_name} ::: {input_name}\t', end='')
-    result = run_command_and_capture((script, TESTS_DIR/input_name), onerror='stderr')
-    expected = read_file(TESTS_DIR/output_name)
-    if result != expected:
+    result, exit_code = run_command_and_capture((script, TESTS_DIR/input_name), onerror='stderr')
+    if exit_code != 0:
       print('FAILED')
-      for line in trimmed_diff(expected.splitlines(), result.splitlines()):
-        print(line)
     else:
-      print('success')
+      expected = read_file(TESTS_DIR/output_name)
+      if result != expected:
+        print('FAILED')
+        for line in trimmed_diff(expected.splitlines(), result.splitlines()):
+          print(line)
+      else:
+        print('success')
 
 
 def parse_test_align(test_name):
@@ -127,7 +130,7 @@ def parse_test_align(test_name):
     }
   )
   for data in subtests:
-    print(f'{test_name} ::: {script_name} ::: {data["input"]}')
+    print(f'{test_name} ::: {script_name} ::: {data["input"]}\t', end='')
     # $ parse-test-align.py [--duplex] parse-align.in.txt --ref parse-align.ref.fa \
     #   --fq1 parse-align.reads_1.fq --fq2 parse-align.reads_2.fq
     cmd = [script, TESTS_DIR/data['input']] + data['args']
@@ -136,13 +139,14 @@ def parse_test_align(test_name):
       cmd.append(TESTS_DIR/(outname+'.tmp'))
     exitcode = run_command(cmd, onerror='stderr')
     if exitcode != 0:
-      return
+      print('FAILED')
+      continue
     failures = []
     for outname in data['outputs'].values():
       expected = TESTS_DIR/outname
       result = TESTS_DIR/(outname+'.tmp')
       if result.exists():
-        stdout = run_command_and_capture(('diff', expected, result))
+        stdout, exit_code = run_command_and_capture(('diff', expected, result))
         if stdout:
           failures.append((outname, head(stdout)))
         os.remove(result)
@@ -213,7 +217,7 @@ def run_command_and_capture(command, onerror='warn'):
   )
   if result.returncode != 0 and onerror == 'stderr':
     logging.error(str(result.stderr, 'utf8'))
-  return str(result.stdout, 'utf8')
+  return str(result.stdout, 'utf8'), result.returncode
 
 
 def run_command_and_catch(command, onerror='warn', **kwargs):
