@@ -46,6 +46,60 @@ class Alignment(object):
       if 'tags' in kwargs:
         self.tags = tags
     self._length = None
+  @property
+  def mate(self):
+    if self._flag_cmp(64):
+      return 1
+    elif self._flag_cmp(128):
+      return 2
+  # Shorthands for all the flags.
+  def _flag_cmp(self, bit):
+    return bool(self.flag & bit)
+  @property
+  def paired(self):
+    return self._flag_cmp(1)
+  @property
+  def proper(self):
+    return self._flag_cmp(2)
+  @property
+  def unmapped(self):
+    return self._flag_cmp(4)
+  @property
+  def mapped(self):
+    return not self._flag_cmp(4)
+  @property
+  def mate_unmapped(self):
+    return self._flag_cmp(8)
+  @property
+  def reverse(self):
+    return self._flag_cmp(16)
+  @property
+  def forward(self):
+    return not self._flag_cmp(16)
+  @property
+  def mate_reverse(self):
+    return self._flag_cmp(32)
+  @property
+  def first(self):
+    return self._flag_cmp(64)
+  @property
+  def second(self):
+    return self._flag_cmp(128)
+  @property
+  def primary(self):
+    return not self._flag_cmp(256)
+  @property
+  def secondary(self):
+    return self._flag_cmp(256)
+  @property
+  def lowqual(self):
+    return self._flag_cmp(512)
+  @property
+  def duplicate(self):
+    return self._flag_cmp(1024)
+  @property
+  def supplemental(self):
+    return self._flag_cmp(2048)
   # Okay, here's the only non-simple bit:
   @property
   def length(self):
