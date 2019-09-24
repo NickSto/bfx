@@ -74,6 +74,9 @@ class Alignment(object):
   def reverse(self):
     return self._flag_cmp(16)
   @property
+  def reversed(self):
+    return self.reverse
+  @property
   def forward(self):
     return not self._flag_cmp(16)
   @property
