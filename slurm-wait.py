@@ -16,13 +16,15 @@ PARAMS = {
   'min_node_size_nodes':int,
   'max_jobs':int,
   'min_jobs':int,
+  'cpus':int,
 }
 USER = getpass.getuser()
 PAUSE_TIME = 10
 USAGE = """$ %(prog)s [parameters]
        $ %(prog)s @path/to/args.txt"""
 DESCRIPTION = """Determine whether we should keep launching slurm jobs, based on available
-resources. Launch this and it will sleep until enough resources are available."""
+resources. Launch this and it will sleep until enough resources are available. Then, it will print
+the name of a node with enough free CPUs to run your job."""
 EPILOG = """You can also give arguments via a file. Just give the path to the file as an argument,
 prepended by '@'. The file will be read, and each line will be interpreted as a regular argument to
 this script. Remember to put literally every argument on its own line, so '--min-jobs 8' should be
@@ -32,23 +34,22 @@ given as two lines: '--min-jobs' and '8'."""
 def make_argparser():
   parser = argparse.ArgumentParser(usage=USAGE, description=DESCRIPTION, epilog=EPILOG,
     fromfile_prefix_chars='@')
-  parser.add_argument('-o', '--output', choices=('min', 'max'),
-    help="Choose a node with free resources to run on and print it to stdout. Give either 'min' or "
-      "'max' to indicate whether to choose the node with the most or least number of idle CPUs. "
-      'Give --cpus-req to indicate how many CPUs the job requires. Only nodes with at least this '
+  parser.add_argument('-p', '--prefer', choices=('min', 'max'), default='min',
+    help='Prefer nodes with either the most (max) or least (min) number of idle CPUs. '
+      'Give --cpus to indicate how many CPUs the job requires. Only nodes with at least this '
       'many CPUs will be considered.')
   parser.add_argument('-C', '--cpus', type=int, default=1,
-    help="How many CPUs are required by the job we're waiting to start. Used when choosing a node "
-      'to print with --output.')
+    help="How many CPUs are required by the job we're waiting to start. Default: %(default)s")
   parser.add_argument('-q', '--wait-for-job',
     help="Wait until the job with this name has begun. Useful if you just launched one and don't "
-      "want to keep queueing jobs if they're not running.")
+      "want to keep queueing jobs if they're not starting.")
+  #TODO: Update help text with new, predictive algorithm.
   parser.add_argument('-n', '--min-idle-nodes', default=0,
-    help='Keep this many nodes idle: if only this many are idle, wait. Can give a number or a file '
-      'containing the number (and nothing else).')
+    help='Keep this many nodes idle: wait if only this many + 1 are idle. Can give a number or a '
+      'file containing the number (and nothing else).')
   parser.add_argument('-c', '--min-idle-cpus', default=0,
-    help='Keep this many CPUs idle: if only this many are idle, wait. Can give a number or a file '
-      'containing the number (and nothing else).')
+    help='Keep this many CPUs idle: wait if only this many + --cpus are idle. Can give a number or '
+      'a file containing the number (and nothing else).')
   parser.add_argument('-s', '--min-node-size', default=1,
     help="Minimum node size when counting available resources for the above thresholds. Don't "
       'consider nodes with fewer than this many CPUs. Can give a number or a file containing the '
@@ -61,14 +62,14 @@ def make_argparser():
     help="Don't let yourself have more than this many jobs running at once. If you have this many "
       'jobs running, wait. Can give a number or a file containing the number (and nothing else).')
   parser.add_argument('-j', '--min-jobs', default=0,
-    help='Always let yourself run at least this many jobs. Even if too few resources are '
+    help='Always let yourself (try to) run at least this many jobs. Even if too few resources are '
       "available and you'd normally wait, keep going if fewer than this many jobs are running. "
-      'Note: Does not override --pause-file. Can give a number or a file containing the '
-      'number (and nothing else).')
-  parser.add_argument('-p', '--pause-file', type=pathlib.Path,
+      'In that case, this will exit but print nothing to stdout. Note: Does not override '
+      '--pause-file. Can give a number or a file containing the number (and nothing else).')
+  parser.add_argument('-P', '--pause-file', type=pathlib.Path,
     help='Wait if this file exists. Can be used as a manual pause button.')
   parser.add_argument('-i', '--check-interval', type=int, default=15,
-    help='How many seconds to wait between checks for available resources.')
+    help='How many seconds to wait between checks for available resources. Default: %(default)s')
   parser.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   volume = parser.add_mutually_exclusive_group()
@@ -88,83 +89,54 @@ def main(argv):
 
   params = Parameters(args)
   params.subdivide_param('min_node_size', ('min_node_size_cpus', 'min_node_size_nodes'))
+  params.chooser = args.prefer
 
   if params.max_jobs is not None and params.min_jobs >= params.max_jobs:
     fail(f'Error: --min-jobs must be < --max-jobs ({params.min_jobs} >= {params.max_jobs}).')
 
-  wait_for_job(args.wait_for_job, args.check_interval)
-  wait_for_jobs(params, args.check_interval)
-  if count_running_jobs() >= params.min_jobs:
-    wait_for_nodes(params, args.check_interval)
-    wait_for_cpus(params, args.check_interval)
-  wait_for_pause_file(args.pause_file, args.check_interval)
-
-  if args.output:
-    node = get_idle('node', args.cpus, args.output)
-    print(node)
-
-
-def wait_for_job(job_name, check_interval):
-  if job_name:
-    first_loop = True
-    printed = False
-    while count_running_jobs(job_name) <= 0:
-      if not printed and not first_loop:
-        print('Waiting for job to begin..')
-        printed = True
-      if first_loop:
-        time.sleep(5)
-      else:
-        time.sleep(check_interval)
-      first_loop = False
-
-
-def wait_for_jobs(params, check_interval):
-  if params.max_jobs is not None:
-    printed = False
-    while count_running_jobs() >= params.max_jobs:
-      if not printed:
-        print('Too many jobs running ({} >= {})'.format(count_running_jobs(), params.max_jobs))
-        printed = True
-      time.sleep(check_interval)
-
-
-def wait_for_nodes(params, check_interval):
-  if params.min_idle_nodes:
-    printed = False
-    while get_idle('nodes', params.min_node_size_nodes) < params.min_idle_nodes:
-      if not printed:
-        print(
-          'Too few nodes idle ({} < {})'
-          .format(get_idle('nodes', params.min_node_size_nodes), params.min_idle_nodes)
+  node = None
+  wait = True
+  last_reason = None
+  while wait or node is None:
+    wait = False
+    paused = False
+    reason_msg = None
+    if args.wait_for_job and not count_running_jobs(args.wait_for_job):
+      reason_msg = f'Waiting for job {job_name!r} to begin..'
+      wait = True
+    if count_running_jobs() >= params.max_jobs:
+      reason_msg = f'Too many jobs running ({count_running_jobs()} >= {params.max_jobs})'
+      wait = True
+    if args.pause_file and args.pause_file.is_file():
+      reason_msg = f'Execution paused: Pause file {args.pause_file} exists.'
+      wait = True
+      paused = True
+    states = get_node_states()
+    node = choose_node(
+      states,
+      args.cpus,
+      min_idle_cpus=params.min_idle_cpus,
+      min_idle_nodes=params.min_idle_nodes,
+      min_node_cpus=params.min_node_cpus,
+      chooser=params.prefer,
+    )
+    if count_running_jobs() < params.min_jobs and not paused:
+      if wait or node is None:
+        logging.info(
+          f"You're running fewer than {params.min_jobs} jobs. Ignoring limits and continuing."
         )
-        printed = True
-      time.sleep(check_interval)
+      break
+    if wait or node is None:
+      if reason_msg and reason_msg != last_reason:
+        logging.warning(reason_msg)
+      last_reason = reason_msg
+      time.sleep(args.check_interval)
+
+  if node is not None:
+    print(abbrev_node(node))
 
 
-def wait_for_cpus(params, check_interval):
-  if params.min_idle_cpus:
-    printed = False
-    while get_idle('cpus', params.min_node_size_cpus) < params.min_idle_cpus:
-      if not printed:
-        print(
-          'Too few cpus idle ({} < {})'
-          .format(get_idle('cpus', params.min_node_size_cpus), params.min_idle_cpus)
-        )
-        printed = True
-      time.sleep(check_interval)
-
-
-def wait_for_pause_file(pause_path, check_interval):
-  printed = False
-  if pause_path and pause_path.is_file():
-    if not printed:
-      print('Execution paused..')
-      printed = True
-    time.sleep(check_interval)
-
-
-class Params:
+class Parameters:
 
   def __init__(self, args):
     self.values = {}
@@ -203,16 +175,8 @@ def parse_file_or_value(raw_value, coerce_type):
   return None, path
 
 
-def get_idle(resource, min_node_size=None, chooser=max):
-  assert resource in ('cpus', 'nodes'), resource
-  assert hasattr(chooser, '__call__') or chooser in ('min', 'max'), chooser
-  if not hasattr(chooser, '__call__'):
-    if chooser == 'min':
-      chooser = min
-    elif chooser == 'max':
-      chooser = max
-  idle = 0
-  best_cpus = None
+def get_node_states():
+  states = {}
   cmd = ('sinfo', '-h', '-p', 'general', '-t', 'idle,alloc', '-o', '%n %C')
   stdout = run_command(cmd, 'Error: Problem getting CPU usage info.')
   for line in stdout.splitlines():
@@ -228,24 +192,80 @@ def get_idle(resource, min_node_size=None, chooser=max):
       node_size = int(minor_fields[3])
     except ValueError:
       continue
-    if min_node_size is not None:
-      if node_size < min_node_size:
-        continue
-    if resource == 'cpus':
-      idle += node_idle
-    elif resource == 'nodes':
-      if node_idle == node_size:
-        idle += 1
-    elif resource == 'node':
-      if best_cpus is None:
-        best_cpus = node_idle
-        idle = node_name
-      else:
-        result = chooser(node_idle, best_cpus)
-        if result != best_cpus:
-          best_cpus = node_idle
-          idle = node_name
-  return idle
+    states[node_name] = {'name':node_name, 'idle':node_idle, 'cpus':node_size}
+  return states
+
+
+def choose_node(
+    states,
+    job_cpus,
+    min_idle_cpus=0,
+    min_idle_nodes=0,
+    min_node_size_cpus=1,
+    min_node_size_idle=1,
+    chooser=max
+  ):
+  """Choose a node to run the job on, if any.
+  If the resources the job would consume would make them fall below the given thresholds, return
+  `None`.
+  `min_node_cpus`: Don't consider nodes with fewer than this many CPUs. Pretend they don't exist.
+  `chooser`: Whether to prefer nodes with more or less free CPUs. `max` will make it prefer nodes
+  with the most idle CPUs, spreading your jobs out across nodes. `min` will make it prefer nodes
+  with fewer available CPUs (but still enough to run the job)."""
+  chooser = get_chooser(chooser)
+  idle_nodes, idle_cpus = count_idle_resources(
+    states,
+    min_node_size_cpus=min_node_size_cpus,
+    min_node_size_idle=min_node_size_idle,
+  )
+  if idle_cpus - job_cpus < min_idle_cpus:
+    return None
+  if idle_nodes - 1 < min_idle_nodes:
+    exclude_idle_nodes = True
+  else:
+    exclude_idle_nodes = False
+  best_node = None
+  for node in states.values():
+    if node['cpus'] < min_node_size_cpus:
+      continue
+    if node['idle'] < job_cpus:
+      continue
+    if node['idle'] == node['cpus'] and exclude_idle_nodes:
+      continue
+    if best_node is None:
+      best_node = node
+    else:
+      result = chooser(node['idle'], best_node['idle'])
+      if result != best_node['idle']:
+        best_node = node
+  if best_node is None:
+    return None
+  else:
+    return best_node['name']
+
+
+def count_idle_resources(states, min_node_size_cpus=1, min_node_size_idle=1):
+  idle_nodes = 0
+  idle_cpus = 0
+  for node in states.values():
+    if node['cpus'] >= min_node_size_cpus:
+      idle_cpus += node['idle']
+    if node['cpus'] >= min_node_size_idle:
+      if node['idle'] == node['cpus']:
+        idle_nodes += 1
+  return idle_nodes, idle_cpus
+
+
+def get_chooser(chooser_raw):
+  if hasattr(chooser_raw, '__call__'):
+    return chooser_raw
+  else:
+    if chooser_raw == 'min':
+      return min
+    elif chooser_raw == 'max':
+      return max
+    else:
+      fail(f'Error: Invalid chooser {chooser_raw!r}')
 
 
 def count_running_jobs(name=None):
@@ -258,6 +278,11 @@ def count_running_jobs(name=None):
     elif line == name:
       jobs += 1
   return jobs
+
+
+def abbrev_node(node_name):
+  fields = node_name.split('.')
+  return fields[0]
 
 
 def run_command(cmd, message):
