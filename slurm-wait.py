@@ -114,7 +114,7 @@ def main(argv):
     paused = False
     reason_msg = None
     if args.wait_for_job and not count_running_jobs(args.wait_for_job):
-      reason_msg = f'Waiting for job {job_name!r} to begin..'
+      reason_msg = f'Waiting for job {args.wait_for_job!r} to begin..'
       wait = True
     if params.max_jobs and count_running_jobs() >= params.max_jobs:
       reason_msg = f'Too many jobs running ({count_running_jobs()} >= {params.max_jobs})'
