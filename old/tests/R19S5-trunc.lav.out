@@ -1,0 +1,51 @@
+--- subject ---
+filename:	/home/me/bx/data/chrM-rCRS.fa
+id:	chrM
+name:	chrM gi|251831106|ref|NC_012920.1| Homo sapiens mitochondrion, complete genome
+seqnum:	1
+revcomp:	False
+begin:	1
+end:	16569
+--- query ---
+filename:	orig/R19S5.fa-
+id:	NODE_3_length_401_cov_0.806569_ID_1890988
+name:	NODE_3_length_401_cov_0.806569_ID_1890988
+seqnum:	1
+revcomp:	True
+begin:	1
+end:	401
+  score: 22121
+  --- subject ---
+  begin:	233
+  end:	544
+  --- query ---
+  begin:	8
+  end:	318
+    identity: 67
+    --- subject ---
+    begin:	233
+    end:	271
+    --- query ---
+    begin:	8
+    end:	46
+    identity: 70
+    --- subject ---
+    begin:	273
+    end:	282
+    --- query ---
+    begin:	47
+    end:	56
+    identity: 93
+    --- subject ---
+    begin:	283
+    end:	462
+    --- query ---
+    begin:	59
+    end:	238
+    identity: 94
+    --- subject ---
+    begin:	465
+    end:	544
+    --- query ---
+    begin:	239
+    end:	318
