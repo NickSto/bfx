@@ -3,3 +3,8 @@
 *.bam.bai
 *.so
 readsfq
+.mypy_cache
+old/swalign.py
+old/align.py
+old/*.txt
+old/*.fa
