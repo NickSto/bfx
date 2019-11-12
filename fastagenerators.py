@@ -1,6 +1,39 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+import collections.abc
 import os
-__version__ = '0.9'
+import pathlib
+__version__ = '0.10'
+
+
+def detect_input_type(input):
+  if isinstance(input, pathlib.Path):
+    return 'path'
+  elif isinstance(input, str):
+    return 'str'
+  elif isinstance(input, collections.abc.Generator):
+    return 'generator'
+  elif hasattr(input, 'read') and hasattr(input, 'close'):
+    return 'file'
+  else:
+    return None
+
+
+class Reader:
+  """Base class for all other parsers."""
+  def __init__(self, input, **kwargs):
+    self.input = input
+    self.input_type = detect_input_type(input)
+    if self.input_type not in ('path', 'str', 'file', 'generator'):
+      raise ValueError(f'Input object {input!r} not a file, path, string, or generator.')
+    for key, value in kwargs.items():
+      setattr(self, key, value)
+  def get_input_iterator(self):
+    if self.input_type == 'str':
+      return open(self.input)
+    elif self.input_type == 'path':
+      return self.input.open()
+    else:
+      return self.input
 
 
 class FastaReadGenerator(object):
@@ -27,7 +60,7 @@ class FastaReadGenerator(object):
       yield read
 
 
-class FastaLineGenerator(object):
+class FastaLineGenerator(Reader):
   """A simple FASTA parser that only reads a line at a time into memory.
   Usage:
   fasta = FastaLineGenerator('/home/user/sequence.fasta')
@@ -39,10 +72,10 @@ class FastaLineGenerator(object):
   newline.
   """
 
-  def __init__(self, filepath):
-    if not os.path.isfile(filepath):
-      raise IOError('File not found: "'+filepath+'"')
-    self.filepath = filepath
+  def __init__(self, input):
+    super().__init__(input)
+    if self.input_type is 'str' and not os.path.isfile(self.input):
+      raise IOError(f'File not found: "{self.input!r}"')
     self.name = None
     self.id = None
 
@@ -52,8 +85,9 @@ class FastaLineGenerator(object):
   #TODO: Give some signal that we just finished a sequence. Otherwise, we can't validate that there
   #      aren't sequences with identical names one after another.
   def lines(self):
-    with open(self.filepath, 'rU') as filehandle:
-      for line_raw in filehandle:
+    input_iterator = self.get_input_iterator()
+    try:
+      for line_raw in input_iterator:
         line = line_raw.strip()
         if not line:
           continue  # allow empty lines
@@ -66,6 +100,9 @@ class FastaLineGenerator(object):
           continue
         else:
           yield line
+    finally:
+      if self.input_type in ('path', 'file', 'str'):
+        input_iterator.close()
 
   def bases(self):
     """Generator that yields single bases, while still reading a whole line at
