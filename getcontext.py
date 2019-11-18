@@ -4,7 +4,7 @@ import collections
 import logging
 import pathlib
 import sys
-from typing import Optional, Any, Iterable, Sequence, Generator, Dict, List, Tuple
+from typing import Optional, Any, Iterable, Iterator, Sequence, Generator, Dict, List, Tuple
 from fastagenerators import FastaLineGenerator
 assert sys.version_info.major >= 3, 'Python 3 required'
 
@@ -105,23 +105,25 @@ def read_sites(
 
 def read_ref(ref_path: pathlib.Path, sites_by_chr: Dict[str,List[int]]):
   fasta = FastaLineGenerator(ref_path)
-  sites: Sequence[int] = []
+  sites: Iterator[int] = iter(())
   site: Optional[int] = None
-  site_i = 0
   current_chr = None
   for line in fasta:
     if fasta.id != current_chr:
       # Start of a new chr.
       coord = 0
-      if site_i < len(sites):
-        logging.warning(f'Warning: {len(sites)-site_i} site(s) not found in sequence {current_chr}')
+      remaining = len(list(sites))
+      if site is not None:
+        remaining += 1
+      if remaining:
+        logging.warning(f'Warning: {remaining} site(s) not found in sequence {current_chr}')
       if fasta.id in sites_by_chr:
-        sites = sites_by_chr[fasta.id]
-        site_i = 0
-        site = sites[site_i]
+        sites = iter(sites_by_chr[fasta.id])
       else:
-        sites = ()
-        site_i = 0
+        sites = iter(())
+      try:
+        site = next(sites)
+      except StopIteration:
         site = None
       current_chr = fasta.id
     start_coord = coord
@@ -129,10 +131,9 @@ def read_ref(ref_path: pathlib.Path, sites_by_chr: Dict[str,List[int]]):
       coord = start_coord + offset
       while coord == site:
         yield fasta.id, coord, base
-        site_i += 1
-        if len(sites) > site_i:
-          site = sites[site_i]
-        else:
+        try:
+          site = next(sites)
+        except StopIteration:
           site = None
 
 
