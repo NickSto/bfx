@@ -161,6 +161,30 @@ def parse_test_align(test_name):
       print(diff)
 
 
+def get_context(test_name):
+  script_name = 'getcontext.py'
+  script = ROOT_DIR / script_name
+  test_data = (
+    {'inputs':('getcontext.in.fa', 'getcontext.in.tsv'), 'output':'getcontext.out.tsv'},
+  )
+  for data in test_data:
+    input_ref, input_sites = data['inputs']
+    output = data['output']
+    print(f'{test_name} ::: {script_name} ::: {input_sites}\t', end='')
+    cmd = (script, '-c', '1', '-f', '2', '-w', '6', TESTS_DIR/input_ref, TESTS_DIR/input_sites)
+    result, exit_code = run_command_and_capture(cmd, onerror='stderr')
+    if exit_code != 0:
+      print('FAILED')
+    else:
+      expected = read_file(TESTS_DIR/output)
+      if result != expected:
+        print('FAILED')
+        for line in trimmed_diff(expected.splitlines(), result.splitlines()):
+          print(line)
+      else:
+        print('success')
+
+
 GlobalsAfterActive = globals().copy()
 
 

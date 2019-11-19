@@ -62,7 +62,8 @@ def main(argv: List[str]) -> int:
     fail('No sites found in input.')
 
   for chrom, coord, i, context in get_context(args.ref, sites_by_chrom, args.window):
-    print(chrom, coord, context[i], context, sep='\t')
+    gc = get_gc(context)
+    print(chrom, coord, i, context[i], context, round(100*gc, 1), sep='\t')
 
   return 0
 
@@ -126,6 +127,21 @@ def parse_coord_int(coord_str: str, coord_col: int, warned_value: bool):
       warned_value = True
     return None
   return coord
+
+
+def get_gc(seq: str) -> Optional[float]:
+  gc = 0
+  at = 0
+  for base in seq.upper():
+    if base in ('G', 'C', 'S'):
+      gc += 1
+    elif base in ('A', 'T', 'W'):
+      at += 1
+  total = at+gc
+  if total:
+    return gc/total
+  else:
+    return None
 
 
 def get_context(
