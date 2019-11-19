@@ -9,7 +9,7 @@ from fastagenerators import FastaLineBuffered
 assert sys.version_info.major >= 3, 'Python 3 required'
 
 
-DESCRIPTION = """"""
+DESCRIPTION = """Get info on the sequence context surrounding given sites."""
 
 
 def make_argparser() -> argparse.ArgumentParser:
@@ -28,6 +28,7 @@ def make_argparser() -> argparse.ArgumentParser:
       "Numbers are 1-based. Can omit if there's only one chromosome.")
   options.add_argument('-C', '--chrom-id',
     help='Assume all sites are in this reference sequence.')
+  options.add_argument('-w', '--window', type=int, default=15)
   options.add_argument('-h', '--help', action='help',
     help='Print this argument help text and exit.')
   logs = parser.add_argument_group('Logging')
@@ -60,13 +61,8 @@ def main(argv: List[str]) -> int:
   if len(sites_by_chrom) == 0:
     fail('No sites found in input.')
 
-  # for chrom_id, sites in sites_by_chrom.items():
-  #   for coord in sites:
-  #     print(chrom_id, coord, sep='\t')
-
-  for data in read_ref(args.ref, sites_by_chrom):
-    print(*data, sep='\t')
-    pass
+  for chrom, coord, i, context in get_context(args.ref, sites_by_chrom, args.window):
+    print(chrom, coord, context[i], context, sep='\t')
 
   return 0
 
@@ -132,7 +128,9 @@ def parse_coord_int(coord_str: str, coord_col: int, warned_value: bool):
   return coord
 
 
-def read_ref(ref_path: pathlib.Path, sites_by_chrom: Dict[str,List[int]]):
+def get_context(
+    ref_path: pathlib.Path, sites_by_chrom: Dict[str,List[int]], window: int
+  ) -> Generator[Tuple[str,int,str,str],None,None]:
   fasta = FastaLineBuffered(ref_path)
   sites: Iterator[int]
   site: Optional[int]
@@ -141,21 +139,165 @@ def read_ref(ref_path: pathlib.Path, sites_by_chrom: Dict[str,List[int]]):
       sites = iter(sites_by_chrom[chrom.id])
     else:
       continue
-    site = next(sites)
+    site = get_next_site(sites)
+    context = Context(window=window)
     for coord, base in enumerate(chrom.bases(), 1):
-      while coord == site:
-        yield chrom.id, coord, base
-        try:
-          site = next(sites)
-        except StopIteration:
-          site = None
+      context.push(base)
+      while site is not None and site == context.middle:
+        yield chrom.id, site, context.middle_index, str(context)
+        site = get_next_site(sites)
       if site is None:
         break
+    while site is not None:
+      context.shift()
+      while site is not None and site == context.middle:
+        yield chrom.id, site, context.middle_index, str(context)
+        site = get_next_site(sites)
     remaining = len(list(sites))
     if site is not None:
       remaining += 1
     if remaining:
       logging.warning(f'Warning: {remaining} site(s) not found in sequence {chrom.id}')
+
+
+def get_next_site(sites):
+  try:
+    site = next(sites)
+  except StopIteration:
+    site = None
+  return site
+
+
+class Context:
+  """An object representing a sequence context using a sliding window.
+  This tracks both the window and the sequence contained within it. The two are
+  separate because the window can hang off the left or right edge of the sequence,
+  with the left edge in negative coordinates, for example.
+  The distance between the left and right edges of the window is always constant,
+  i.e. `context.right - context.left + 1 == context.window` always.
+  But the sequence in the `Context` can be smaller than `context.window`, for
+  example if the window is past the left or right edges of the sequence.
+  Note:
+  All coordinates are 1-based, where each base has a coordinate, starting with 1.
+  Attributes:
+  `window`: The size of the window (integer).
+  `left` and `right`: Coordinates of the window edges. `left` can be <= 0, and `right`
+    can be greater than the sequence length.
+  `middle`: Coordinate of the center of the window. If the window size is even, this
+    will be the coordinate to the left of the center.
+  `left_base`, `right_base`, `middle_base`: The bases at each of these coordinates.
+    If the coordinate is outside the sequence bounds, the base will be `None`.
+  `seq_left`, `seq_right`: The coordinates of the first and last bases contained in
+    the window. These may be different than `left` and `right` if the window is past
+    the edge of the sequence.
+  `middle_index`: The index of the middle base in the string representation of this
+    `Context`. `str(context)[context.middle_index]` should be equivalent to
+    `context.middle_base`."""
+
+  def __init__(self, seq: str=None, window=10):
+    #TODO: If performance is an issue, try a list, which may be faster for small windows.
+    self._deque: collections.deque = collections.deque()
+    self._window = window
+    self.left = 1-self.window
+    self.right = 0
+    self.seq_left = 1
+    self.seq_right = 0
+    if seq:
+      for base in seq:
+        self.push(base)
+
+  def push(self, base: str) -> Optional[str]:
+    """Add a new base to the right side of the context and slide the window to the right."""
+    self._deque.append(base)
+    self.left += 1
+    self.right += 1
+    self.seq_right += 1
+    return self._fix_left_end()
+
+  def shift(self):
+    """Move the window right without adding more bases.
+    Raises an `IndexError` once there's no more bases left in the context."""
+    self.left += 1
+    self.right += 1
+    return self._fix_left_end()
+
+  def _fix_left_end(self) -> Optional[str]:
+    popped_base = None
+    while (
+        self.seq_left < self.left or
+        self.seq_left < self.seq_right-self.window+1 or
+        len(self) > self.window
+    ):
+      popped_base = self._deque.popleft()
+      self.seq_left += 1
+    return popped_base
+
+  @property
+  def window(self) -> int:
+    return self._window
+
+  @property
+  def middle(self) -> int:
+    """Return the coordinate of the "middle" base in the window.
+    If the context is smaller than the window, this can return a coordinate less than
+    `self.left` (even a negative coord)."""
+    return self.right-(self.window//2)
+
+  @property
+  def middle_base(self) -> Optional[str]:
+    middle = self.middle
+    try:
+      return self[middle]
+    except IndexError:
+      return None
+
+  @property
+  def middle_index(self):
+    return self.middle - self.seq_left
+
+  @property
+  def left_base(self):
+    try:
+      return self[self.seq_left]
+    except IndexError:
+      return None
+
+  @property
+  def right_base(self):
+    try:
+      return self[self.seq_right]
+    except IndexError:
+      return None
+
+  def __len__(self) -> int:
+    return len(self._deque)
+
+  def __iter__(self) -> Iterator[str]:
+    return iter(self._deque)
+
+  def __getitem__(self, coord: int) -> str:
+    """`coord` should be in the range `self.seq_left <= coord <= self.seq_right`"""
+    index = coord - self.seq_left
+    base = None
+    if index >= 0:
+      try:
+        base = self._deque[index]
+      except IndexError:
+        pass
+    if base is None:
+      raise IndexError(
+        f'Coordinate {coord} out of range ({type(self).__name__} object covers bases '
+        f'{self.seq_left} to {self.seq_right}).'
+      )
+    else:
+      return base
+
+  def __str__(self):
+    return ''.join(self._deque)
+
+  def __repr__(self):
+    class_name = type(self).__name__
+    return f"<{class_name} object {str(self)!r}>"
 
 
 def fail(message: Any) -> None:
