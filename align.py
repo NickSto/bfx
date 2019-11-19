@@ -157,7 +157,10 @@ def get_paths(reads1_arg, out_arg, format):
   return sam_path, out_path
 
 
-def get_reads_base(reads_path):
+def get_reads_base(reads_path: pathlib.Path) -> str:
+  """Get the basename of a file, omitting any `_1` or `_2` before the extension.
+  Takes a path, possibly including directories, and returns a string of the whole
+  path, but with the file extension and any `_1` or `_2` removed."""
   basename = reads_path.stem
   if basename.endswith('_1') or basename.endswith('_2'):
     basename = basename[:-2]
