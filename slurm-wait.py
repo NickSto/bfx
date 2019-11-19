@@ -222,8 +222,8 @@ def read_config_section(config_path, section, types=None):
       else:
         value = raw_value
       data[key] = value
-  except configparser.Error:
-    fail(f'Invalid config file format in {config_path!r}.')
+  except configparser.Error as error:
+    fail(f'Invalid config file format in {config_path!r}: {error}')
   return data
 
 
