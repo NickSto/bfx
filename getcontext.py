@@ -83,7 +83,8 @@ def main(argv: List[str]) -> int:
   sites_by_chrom = read_sites(args.sites, args.coord_field, args.chrom_field, args.chrom_id)
 
   if len(sites_by_chrom) == 0:
-    fail('No sites found in input.')
+    logging.warning('Warning: No sites found in input.')
+    return 0
 
   for chrom, coord, i, context in get_context(args.ref, sites_by_chrom, args.window):
     gc = get_gc(context, null='.', decimals=1)
