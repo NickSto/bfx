@@ -41,6 +41,8 @@ def make_argparser():
   options.add_argument('-q', '--wait-for-job',
     help="Wait until the job with this name has begun. Useful if you just launched one and don't "
       "want to keep queueing jobs if they're not starting.")
+  options.add_argument('-Q', '--wait-for-job-prefix',
+    help='Same as --wait-for-job, but accept any job whose name starts with this string.')
   options.add_argument('-P', '--pause-file', type=pathlib.Path,
     help='Wait if this file exists. Can be used as a manual pause button.')
   options.add_argument('-i', '--check-interval', type=int, default=15,
@@ -84,7 +86,7 @@ def make_argparser():
   log.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
   volume = log.add_mutually_exclusive_group()
-  volume.add_argument('-Q', '--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
+  volume.add_argument('--quiet', dest='volume', action='store_const', const=logging.CRITICAL,
     default=logging.WARNING)
   volume.add_argument('-v', '--verbose', dest='volume', action='store_const', const=logging.INFO)
   volume.add_argument('-D', '--debug', dest='volume', action='store_const', const=logging.DEBUG)
@@ -101,6 +103,15 @@ def main(argv):
   if args.config and not args.config.is_file():
     logging.warning(f'Warning: --config file {str(args.config)!r} not found!')
 
+  if args.wait_for_job:
+    if args.wait_for_job_prefix:
+      fail('Error: Cannot give both --wait-for-job and --wait-for-job-prefix.')
+    wait_for = args.wait_for_job
+    prefixed = False
+  else:
+    wait_for = args.wait_for_job_prefix
+    prefixed = True
+
   params = Parameters(args=args, config=args.config)
 
   if params.max_jobs is not None and params.min_jobs >= params.max_jobs:
@@ -113,8 +124,8 @@ def main(argv):
     wait = False
     paused = False
     reason_msg = None
-    if args.wait_for_job and not count_running_jobs(args.wait_for_job):
-      reason_msg = f'Waiting for job {args.wait_for_job!r} to begin..'
+    if wait_for and not count_running_jobs(name=wait_for, prefixed=prefixed):
+      reason_msg = f'Waiting for job {wait_for!r} to begin..'
       wait = True
     if params.max_jobs and count_running_jobs() >= params.max_jobs:
       reason_msg = f'Too many jobs running ({count_running_jobs()} >= {params.max_jobs})'
@@ -350,15 +361,20 @@ def get_chooser(chooser_raw):
       fail(f'Error: Invalid chooser {chooser_raw!r}')
 
 
-def count_running_jobs(name=None):
+def count_running_jobs(name=None, prefixed=False):
   jobs = 0
   cmd = ('squeue', '-h', '-u', USER, '-t', 'running', '-o', '%j')
   stdout = run_command(cmd, 'Problem getting a list of running jobs.')
   for line in stdout.splitlines():
     if name is None:
       jobs += 1
-    elif line == name:
-      jobs += 1
+    else:
+      if prefixed:
+        if line.startswith(name):
+          jobs += 1
+      else:
+        if line == name:
+          jobs += 1
   return jobs
 
 
