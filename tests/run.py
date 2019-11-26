@@ -171,7 +171,10 @@ def get_context(test_name):
     input_ref, input_sites = data['inputs']
     output = data['output']
     print(f'{test_name} ::: {script_name} ::: {input_sites}\t', end='')
-    cmd = (script, '-c', '1', '-f', '2', '-w', '6', TESTS_DIR/input_ref, TESTS_DIR/input_sites)
+    cmd = (
+      script, '--chrom-field', '1', '--coord-field', '2', '--window', '6',
+      TESTS_DIR/input_ref, TESTS_DIR/input_sites
+    )
     result, exit_code = run_command_and_capture(cmd, onerror='stderr')
     if exit_code != 0:
       print('FAILED')

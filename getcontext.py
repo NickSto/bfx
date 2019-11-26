@@ -44,9 +44,9 @@ def make_argparser() -> argparse.ArgumentParser:
   io.add_argument('-o', '--output', type=argparse.FileType('w'), default=sys.stdout,
     help='Write output to this path instead of stdout.')
   options = parser.add_argument_group('Options')
-  options.add_argument('-f', '--field', type=int, default=1,
+  options.add_argument('-c', '--coord-field', type=int, default=1,
     help='Which column in the sites file has the coordinates of the sites. Numbers are 1-based.')
-  options.add_argument('-c', '--chrom-field', type=int,
+  options.add_argument('-r', '--chrom-field', type=int,
     help='Which column in the sites file has the id of the chromosome of the site. '
       "Numbers are 1-based. Can omit if there's only one chromosome.")
   options.add_argument('-C', '--chrom-id',
@@ -80,7 +80,7 @@ def main(argv: List[str]) -> int:
     parser.print_help()
     fail('Must provide a --chrom-field or a --chrom-id.')
 
-  sites_by_chrom = read_sites(args.sites, args.field, args.chrom_field, args.chrom_id)
+  sites_by_chrom = read_sites(args.sites, args.coord_field, args.chrom_field, args.chrom_id)
 
   if len(sites_by_chrom) == 0:
     fail('No sites found in input.')
