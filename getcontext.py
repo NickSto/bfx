@@ -6,20 +6,43 @@ import pathlib
 import sys
 from typing import Optional, Any, Iterable, Iterator, Sequence, Generator, Dict, List, Tuple
 from fastagenerators import FastaLineBuffered
+from utillib import simplewrap
 assert sys.version_info.major >= 3, 'Python 3 required'
 
 
-DESCRIPTION = """Get info on the sequence context surrounding given sites."""
+DESCRIPTION = simplewrap.wrap(
+"""Get info on the sequence context surrounding given sites.
+Output is tab-delimited, one line per site.
+Columns:
+1. Sequence (chromosome) name.
+2. Coordinate in the sequence.
+3. Coordinate in the context excerpt (0-based).
+4. Base of the site in the context excerpt.
+   - Semi-redundant: excerpt[coord] == base ($5[$3] == $4)
+5. Context excerpt.
+   - May be less than --window bp long.
+     - I.e. if the site is within window/2 of the edge of sequence.
+6. G/C content of the excerpt, as a percentage.
+   - G, C, and S are counted as G/C.
+   - A, T, and W are counted as A/T.
+   - Case-insensitive.
+   - All other bases are ignored.
+   - G/C content = 100*sum(G/C)/(sum(G/C)+sum(A/T)).
+   - Null content is given as '.'"""
+)
 
 
 def make_argparser() -> argparse.ArgumentParser:
-  parser = argparse.ArgumentParser(add_help=False, description=DESCRIPTION)
+  parser = argparse.ArgumentParser(add_help=False, description=DESCRIPTION,
+    formatter_class=argparse.RawDescriptionHelpFormatter)
   io = parser.add_argument_group('I/O')
   io.add_argument('ref', type=argparse.FileType('r'),
     help='Reference sequence.')
   io.add_argument('sites', type=argparse.FileType('r'), default=sys.stdin, nargs='?',
     help='File containing the coordinates of the sites to get sequence context for. '
       'Should be tab-delimited. Default: stdin.')
+  io.add_argument('-o', '--output', type=argparse.FileType('w'), default=sys.stdout,
+    help='Write output to this path instead of stdout.')
   options = parser.add_argument_group('Options')
   options.add_argument('-f', '--field', type=int, default=1,
     help='Which column in the sites file has the coordinates of the sites. Numbers are 1-based.')
@@ -28,7 +51,8 @@ def make_argparser() -> argparse.ArgumentParser:
       "Numbers are 1-based. Can omit if there's only one chromosome.")
   options.add_argument('-C', '--chrom-id',
     help='Assume all sites are in this reference sequence.')
-  options.add_argument('-w', '--window', type=int, default=15)
+  options.add_argument('-w', '--window', type=int, default=20,
+    help='Width of the sequence context window, in bp. Will be centered on the site.')
   options.add_argument('-h', '--help', action='help',
     help='Print this argument help text and exit.')
   logs = parser.add_argument_group('Logging')
@@ -62,8 +86,8 @@ def main(argv: List[str]) -> int:
     fail('No sites found in input.')
 
   for chrom, coord, i, context in get_context(args.ref, sites_by_chrom, args.window):
-    gc = get_gc(context)
-    print(chrom, coord, i, context[i], context, round(100*gc, 1), sep='\t')
+    gc = get_gc(context, null='.', decimals=1)
+    print(chrom, coord, i, context[i], context, gc, sep='\t')
 
   return 0
 
@@ -129,7 +153,7 @@ def parse_coord_int(coord_str: str, coord_col: int, warned_value: bool):
   return coord
 
 
-def get_gc(seq: str) -> Optional[float]:
+def get_gc(seq: str, null: Any=None, decimals: int=None) -> Optional[float]:
   gc = 0
   at = 0
   for base in seq.upper():
@@ -139,14 +163,18 @@ def get_gc(seq: str) -> Optional[float]:
       at += 1
   total = at+gc
   if total:
-    return gc/total
+    percent = 100*gc/total
+    if decimals is None:
+      return percent
+    else:
+      return round(percent, decimals)
   else:
-    return None
+    return null
 
 
 def get_context(
     ref_path: pathlib.Path, sites_by_chrom: Dict[str,List[int]], window: int
-  ) -> Generator[Tuple[str,int,str,str],None,None]:
+  ) -> Generator[Tuple[str,int,int,str],None,None]:
   fasta = FastaLineBuffered(ref_path)
   sites: Iterator[int]
   site: Optional[int]
