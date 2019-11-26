@@ -87,7 +87,7 @@ def main(argv: List[str]) -> int:
 
   for chrom, coord, i, context in get_context(args.ref, sites_by_chrom, args.window):
     gc = get_gc(context, null='.', decimals=1)
-    print(chrom, coord, i, context[i], context, gc, sep='\t')
+    print(chrom, coord, i, context[i], context, gc, sep='\t', file=args.output)
 
   return 0
 
