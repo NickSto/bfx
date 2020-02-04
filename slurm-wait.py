@@ -9,6 +9,14 @@ import sys
 import time
 assert sys.version_info.major >= 3, 'Python 3 required'
 
+def boolish(raw):
+  if raw.lower() in ('true', '1'):
+    return True
+  elif raw.lower() in ('false', '0'):
+    return False
+  else:
+    return None
+
 PARAMS = {
   'min_idle_nodes': {'type':int, 'default':0},
   'min_idle_cpus': {'type':int, 'default':0},
@@ -19,7 +27,8 @@ PARAMS = {
   'min_jobs': {'type':int, 'default':0},
   'prefer': {'type':str, 'default':'min'},
   'cpus': {'type':int, 'default':1},
-  'mem': {'type':int, 'default':0}
+  'mem': {'type':int, 'default':0},
+  'stop': {'type':boolish, 'default':False},
 }
 PARAM_TYPES = {name:meta['type'] for name, meta in PARAMS.items()}
 UNITS = {'B':1, 'K':1024, 'M':1024**2, 'G':1024**3, 'T':1024**4}
@@ -163,6 +172,10 @@ def main(argv):
       time.sleep(args.check_interval)
       if args.config:
         params.update_with_config(args.config)
+    if params.stop:
+      logging.warning(f'Instructed to stop by {args.config}.')
+      node = 'STOP'
+      break
 
   if node is not None:
     print(abbrev_node(node))
@@ -191,7 +204,7 @@ class Parameters:
 
   def update_with_args(self, args):
     for name, meta in PARAMS.items():
-      raw_value = getattr(args, name)
+      raw_value = getattr(args, name, None)
       if raw_value is not None:
         value = meta['type'](raw_value)
         self.values[name] = value
