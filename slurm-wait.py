@@ -158,10 +158,10 @@ def main(argv):
       chooser=params.prefer,
     )
     if node is None and reason_msg is None:
-      reason_msg = 'No node currently fits the given constraints..'
+      reason_msg = f'No node currently fits the given constraints ({params})'
     if params.min_jobs and count_running_jobs() < params.min_jobs and not paused:
       if wait or node is None:
-        logging.info(
+        logging.warning(
           f"You're running fewer than {params.min_jobs} jobs. Ignoring limits and continuing."
         )
       break
@@ -176,6 +176,8 @@ def main(argv):
       logging.warning(f'Instructed to stop by {args.config}.')
       node = 'STOP'
       break
+
+  logging.warning(f'wait: {wait!r}, node: {node!r}.')
 
   if node is not None:
     print(abbrev_node(node))
@@ -227,12 +229,33 @@ class Parameters:
         fallback = meta['fallback']
         self.values[name] = self.values[fallback]
 
+  @staticmethod
+  def get_default(name):
+    default_value = None
+    if 'fallback' in PARAMS[name]:
+      fallback = PARAMS[name]['fallback']
+      if 'default' in PARAMS[fallback]:
+        default_value = PARAMS[fallback]['default']
+      elif 'default' in PARAMS[name]:
+        default_value = PARAMS[name]
+    elif 'default' in PARAMS[name]:
+      default_value = PARAMS[name]
+    return default_value
+
   def subdivide_param(self, main, specifics):
     """Use the value of parameter `main` as the default value for parameters `specifics`.
     Deprecated."""
     for specific in specifics:
       if self.values[specific] is None:
         self.values[specific] = self.values[main]
+
+  def __str__(self):
+    param_strs = []
+    for name, value in self.values.items():
+      default = self.get_default(name)
+      if value is not None and value != default:
+        param_strs.append(f'{name}: {value!r}')
+    return ', '.join(param_strs)
 
 
 def read_config_section(config_path, section, types=None):
@@ -409,11 +432,11 @@ def bytes_spec(bytes_str):
 
 def run_command(cmd, message):
   logging.info('Info: Running $ '+' '.join(map(str, cmd)))
-  result = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+  result = subprocess.run(cmd, encoding='utf8', stderr=subprocess.PIPE, stdout=subprocess.PIPE)
   if result.returncode != 0:
-    sys.stderr.write(str(result.stderr, 'utf8')+'\n')
+    sys.stderr.write(result.stderr)+'\n'
     fail('Error: '+message)
-  return str(result.stdout, 'utf8')
+  return result.stdout
 
 
 def read_file(path, coerce_type=None):
