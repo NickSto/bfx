@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import configparser
+import datetime
 import getpass
 import logging
 import pathlib
@@ -133,11 +134,14 @@ def main(argv):
     wait = False
     paused = False
     reason_msg = None
-    if wait_for and not count_running_jobs(name=wait_for, prefixed=prefixed):
-      reason_msg = f'Waiting for job {wait_for!r} to begin..'
-      wait = True
-    if params.max_jobs and count_running_jobs() >= params.max_jobs:
-      reason_msg = f'Too many jobs running ({count_running_jobs()} >= {params.max_jobs})'
+    if wait_for:
+      if not (count_running_jobs(name=wait_for, prefixed=prefixed) or did_job_run(wait_for, prefixed)):
+        reason_msg = f'Waiting for job {wait_for!r} to begin..'
+        wait = True
+    if params.max_jobs or params.min_jobs:
+      running_jobs = count_running_jobs()
+    if params.max_jobs and running_jobs >= params.max_jobs:
+      reason_msg = f'Too many jobs running ({running_jobs} >= {params.max_jobs})'
       wait = True
     if args.pause_file and args.pause_file.is_file():
       reason_msg = f'Execution paused: Pause file {args.pause_file} exists.'
@@ -159,7 +163,7 @@ def main(argv):
     )
     if node is None and reason_msg is None:
       reason_msg = f'No node currently fits the given constraints ({params})'
-    if params.min_jobs and count_running_jobs() < params.min_jobs and not paused:
+    if params.min_jobs and running_jobs < params.min_jobs and not paused:
       if wait or node is None:
         logging.warning(
           f"You're running fewer than {params.min_jobs} jobs. Ignoring limits and continuing."
@@ -412,6 +416,43 @@ def count_running_jobs(name=None, prefixed=False):
         if line == name:
           jobs += 1
   return jobs
+
+
+def did_job_run(name, prefixed=None, job_history=None):
+  if job_history is None:
+    job_history = get_job_history()
+  if prefixed:
+    for candidate in job_history.keys():
+      if candidate.startswith(name):
+        return True
+  else:
+    return job_history.get(name)
+
+
+def get_job_history(age=2*60):
+  """Look back at old (and current) jobs and compile the state of historical jobs.
+  Only look at jobs started in the last `age` seconds."""
+  job_history = {}
+  times = {}
+  since = time.time() - age
+  since_dt = datetime.datetime.fromtimestamp(since)
+  since_str = since_dt.strftime('%Y-%m-%dT%H:%M:%S')
+  cmd = ('sacct', '-n', '--starttime', since_str, '--format=Start%20,Jobname%30,state%20')
+  stdout = run_command(cmd, 'Problem getting sacct list of job history.')
+  for line in stdout.splitlines():
+    start = line[:20].strip()
+    job_name = line[20:51].strip()
+    state_raw = line[51:].strip()
+    if state_raw.startswith('CANCELLED by '):
+      state = 'CANCELLED'
+    else:
+      state = state_raw
+    existing_state = job_history.get(job_name)
+    existing_time = times.get(job_name)
+    if existing_time is None or start > existing_time:
+      job_history[job_name] = state
+      times[job_name] = start
+  return job_history
 
 
 def abbrev_node(node_name):
