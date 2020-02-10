@@ -135,7 +135,10 @@ def main(argv):
     paused = False
     reason_msg = None
     if wait_for:
-      if not (count_running_jobs(name=wait_for, prefixed=prefixed) or did_job_run(wait_for, prefixed)):
+      if count_running_jobs(name=wait_for, prefixed=prefixed) or did_job_run(wait_for, prefixed):
+        # It's running or has ran. Don't wait for it to start anymore now or in the future.
+        wait_for = None
+      else:
         reason_msg = f'Waiting for job {wait_for!r} to begin..'
         wait = True
     if params.max_jobs or params.min_jobs:
