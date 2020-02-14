@@ -406,7 +406,7 @@ def get_chooser(chooser_raw):
 
 def count_running_jobs(name=None, prefixed=False):
   jobs = 0
-  cmd = ('squeue', '-h', '-u', USER, '-t', 'running', '-o', '%j')
+  cmd = ('squeue', '-h', '-u', USER, '-t', 'running,configuring,pending', '-o', '%j')
   stdout = run_command(cmd, 'Problem getting a list of running jobs.')
   for line in stdout.splitlines():
     if name is None:
