@@ -124,8 +124,8 @@ def main(argv):
 
   params = Parameters(args=args, config=args.config)
 
-  if params.max_jobs is not None and params.min_jobs >= params.max_jobs:
-    fail(f'Error: --min-jobs must be < --max-jobs ({params.min_jobs} >= {params.max_jobs}).')
+  if params.max_jobs is not None and params.min_jobs > params.max_jobs:
+    fail(f'Error: --min-jobs must be <= --max-jobs ({params.min_jobs} > {params.max_jobs}).')
 
   node = None
   wait = True
