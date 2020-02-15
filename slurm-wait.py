@@ -295,17 +295,22 @@ def parse_file_or_value(raw_value, coerce_type):
 
 def get_node_states():
   states = {}
-  cmd = ('sinfo', '-h', '-p', 'general', '-t', 'idle,alloc', '-o', '%n %C %e')
+  cmd = (
+    'sinfo', '--noheader', '--Node', '--partition', 'general', '--states', 'idle,alloc',
+    '--Format', 'nodelist,memory,allocmem,cpusstate',
+  )
   stdout = run_command(cmd, 'Error: Problem getting CPU usage info.')
   for line in stdout.splitlines():
     major_fields = line.split()
-    if len(major_fields) != 3:
+    if len(major_fields) != 4:
       logging.warning(
         f'Warning: sinfo line has wrong number of fields ({len(major_fields)}): {line!r}'
       )
       continue
     node_name = major_fields[0]
-    minor_fields = major_fields[1].split('/')
+    total_mem_str = major_fields[1]
+    alloc_mem_str = major_fields[2]
+    minor_fields = major_fields[3].split('/')
     mem_str = major_fields[2]
     if len(minor_fields) != 4:
       logging.warning(
@@ -322,11 +327,16 @@ def get_node_states():
       )
       continue
     try:
-      mem = int(mem_str) * 1024**2
+      total_mem = int(major_fields[1]) * 1024**2
+      alloc_mem = int(major_fields[2]) * 1024**2
     except ValueError:
-      logging.warning(f'Warning: sinfo line has invalid mem field ({mem_str!r}): {line!r}')
+      logging.warning(
+        f'Warning: sinfo line has invalid memory values ({major_fields[1]!r} and/or '
+        f'{major_fields[2]!r}): {line!r}.'
+      )
       continue
-    states[node_name] = {'name':node_name, 'idle':node_idle, 'cpus':node_size, 'mem':mem}
+    free_mem = total_mem - alloc_mem
+    states[node_name] = {'name':node_name, 'idle':node_idle, 'cpus':node_size, 'mem':free_mem}
   return states
 
 
