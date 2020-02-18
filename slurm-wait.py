@@ -11,7 +11,11 @@ import time
 assert sys.version_info.major >= 3, 'Python 3 required'
 
 def boolish(raw):
-  if raw.lower() in ('true', '1'):
+  if raw == True:
+    return True
+  elif raw == False or raw is None:
+    return False
+  elif raw.lower() in ('true', '1'):
     return True
   elif raw.lower() in ('false', '0'):
     return False
@@ -30,11 +34,11 @@ PARAMS = {
   'cpus': {'type':int, 'default':1},
   'mem': {'type':int, 'default':0},
   'stop': {'type':boolish, 'default':False},
+  'pause': {'type':boolish, 'default':False},
 }
 PARAM_TYPES = {name:meta['type'] for name, meta in PARAMS.items()}
 UNITS = {'B':1, 'K':1024, 'M':1024**2, 'G':1024**3, 'T':1024**4}
 USER = getpass.getuser()
-PAUSE_TIME = 10
 USAGE = """$ %(prog)s [parameters]
        $ %(prog)s -c config.ini"""
 DESCRIPTION = """Determine whether we should keep launching slurm jobs, based on available
@@ -46,15 +50,16 @@ def make_argparser():
   parser = argparse.ArgumentParser(usage=USAGE, description=DESCRIPTION, add_help=False)
   options = parser.add_argument_group('Options')
   options.add_argument('-c', '--config', type=pathlib.Path,
-    help='A config file to set all the parameters below. This will be read after every pause, so '
-      'you can update it while this script is running and it will change its behavior.')
+    help='A config file to set all the parameters below. This will be read after every '
+      '--check-interval, so you can update it while this script is running and it will change its '
+      'behavior.')
   options.add_argument('-q', '--wait-for-job',
     help="Wait until the job with this name has begun. Useful if you just launched one and don't "
       "want to keep queueing jobs if they're not starting.")
   options.add_argument('-Q', '--wait-for-job-prefix',
     help='Same as --wait-for-job, but accept any job whose name starts with this string.')
-  options.add_argument('-P', '--pause-file', type=pathlib.Path,
-    help='Wait if this file exists. Can be used as a manual pause button.')
+  options.add_argument('-P', '--pause', action='store_true',
+    help='Do not begin executing yet..')
   options.add_argument('-i', '--check-interval', type=int, default=15,
     help='How many seconds to wait between checks for available resources. Default: %(default)s')
   options.add_argument('--mock-sinfo', type=pathlib.Path)
@@ -86,8 +91,7 @@ def make_argparser():
   params.add_argument('-j', '--min-jobs',
     help='Always let yourself (try to) run at least this many jobs. Even if too few resources are '
       "available and you'd normally wait, keep going if fewer than this many jobs are running. "
-      'In that case, this will exit but print nothing to stdout. Note: Does not override '
-      '--pause-file.')
+      'In that case, this will exit but print nothing to stdout. Note: Does not override --pause.')
   params.add_argument('-p', '--prefer', choices=('min', 'max'),
     help='Prefer nodes with either the most (max) or least (min) number of idle CPUs. '
       'Give --cpus to indicate how many CPUs the job requires. Only nodes with at least this '
@@ -132,7 +136,6 @@ def main(argv):
   last_reason = None
   while wait or node is None:
     wait = False
-    paused = False
     reason_msg = None
     if wait_for:
       if count_running_jobs(name=wait_for, prefixed=prefixed) or did_job_run(wait_for, prefixed):
@@ -146,10 +149,9 @@ def main(argv):
     if params.max_jobs and running_jobs >= params.max_jobs:
       reason_msg = f'Too many jobs running ({running_jobs} >= {params.max_jobs})'
       wait = True
-    if args.pause_file and args.pause_file.is_file():
-      reason_msg = f'Execution paused: Pause file {args.pause_file} exists.'
+    if params.pause:
+      reason_msg = f'Execution paused.'
       wait = True
-      paused = True
     if args.mock_sinfo:
       states = read_mock_sinfo(args.mock_sinfo)
     else:
@@ -166,7 +168,7 @@ def main(argv):
     )
     if node is None and reason_msg is None:
       reason_msg = f'No node currently fits the given constraints ({params})'
-    if params.min_jobs and running_jobs < params.min_jobs and not paused:
+    if params.min_jobs and running_jobs < params.min_jobs and not args.pause:
       if wait or node is None:
         logging.warning(
           f"You're running fewer than {params.min_jobs} jobs. Ignoring limits and continuing."
