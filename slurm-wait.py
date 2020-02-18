@@ -22,6 +22,14 @@ def boolish(raw):
   else:
     return None
 
+def csv(raw):
+  if isinstance(raw, str):
+    return raw.split(',')
+  try:
+    return list(raw)
+  except TypeError:
+    raise TypeError(f'Invalid comma-delimited list. Must give a string or a sequence. Saw {raw!r}.')
+
 PARAMS = {
   'min_idle_nodes': {'type':int, 'default':0},
   'min_idle_cpus': {'type':int, 'default':0},
@@ -35,6 +43,7 @@ PARAMS = {
   'mem': {'type':int, 'default':0},
   'stop': {'type':boolish, 'default':False},
   'pause': {'type':boolish, 'default':False},
+  'affinity': {'type':csv},
 }
 PARAM_TYPES = {name:meta['type'] for name, meta in PARAMS.items()}
 UNITS = {'B':1, 'K':1024, 'M':1024**2, 'G':1024**3, 'T':1024**4}
@@ -92,6 +101,8 @@ def make_argparser():
     help='Always let yourself (try to) run at least this many jobs. Even if too few resources are '
       "available and you'd normally wait, keep going if fewer than this many jobs are running. "
       'In that case, this will exit but print nothing to stdout. Note: Does not override --pause.')
+  params.add_argument('-a', '--affinity', default=(),
+    help='The node(s) to prefer when choosing one to run on. Give a comma-separated list.')
   params.add_argument('-p', '--prefer', choices=('min', 'max'),
     help='Prefer nodes with either the most (max) or least (min) number of idle CPUs. '
       'Give --cpus to indicate how many CPUs the job requires. Only nodes with at least this '
@@ -152,10 +163,7 @@ def main(argv):
     if params.pause:
       reason_msg = f'Execution paused.'
       wait = True
-    if args.mock_sinfo:
-      states = read_mock_sinfo(args.mock_sinfo)
-    else:
-      states = get_node_states()
+    states = get_node_states(mock_sinfo_path=args.mock_sinfo)
     node = choose_node(
       states,
       params.cpus,
@@ -164,6 +172,7 @@ def main(argv):
       min_idle_nodes=params.min_idle_nodes,
       min_node_size_cpus=params.min_node_size_cpus,
       min_node_size_nodes=params.min_node_size_nodes,
+      affinities=params.affinity,
       chooser=params.prefer,
     )
     if node is None and reason_msg is None:
@@ -295,13 +304,16 @@ def parse_file_or_value(raw_value, coerce_type):
   return None, path
 
 
-def get_node_states():
+def get_node_states(mock_sinfo_path=None):
   states = {}
   cmd = (
     'sinfo', '--noheader', '--Node', '--partition', 'general', '--states', 'idle,alloc',
     '--Format', 'nodelist,memory,allocmem,cpusstate',
   )
-  stdout = run_command(cmd, 'Error: Problem getting CPU usage info.')
+  if mock_sinfo_path:
+    stdout = mock_sinfo_path.open().read()
+  else:
+    stdout = run_command(cmd, 'Error: Problem getting CPU usage info.')
   for line in stdout.splitlines():
     major_fields = line.split()
     if len(major_fields) != 4:
@@ -350,7 +362,8 @@ def choose_node(
     min_idle_nodes=0,
     min_node_size_cpus=1,
     min_node_size_nodes=1,
-    chooser=max
+    affinities=(),
+    chooser=max,
   ):
   """Choose a node to run the job on, if any.
   If the resources the job would consume would make them fall below the given thresholds, return
@@ -370,7 +383,8 @@ def choose_node(
     exclude_idle_nodes = True
   else:
     exclude_idle_nodes = False
-  best_node = None
+  # Narrow it down to eligible nodes.
+  candidates = []
   for node in states.values():
     if node['cpus'] < min_node_size_cpus:
       continue
@@ -380,6 +394,13 @@ def choose_node(
       continue
     if node['idle'] == node['cpus'] and exclude_idle_nodes:
       continue
+    candidates.append(node)
+  # Choose from among the eligible nodes.
+  best_node = None
+  for node in candidates:
+    if node['name'] in affinities:
+      best_node = node
+      break
     if best_node is None:
       best_node = node
     else:
