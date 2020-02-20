@@ -67,8 +67,8 @@ def make_argparser():
       "want to keep queueing jobs if they're not starting.")
   options.add_argument('-Q', '--wait-for-job-prefix',
     help='Same as --wait-for-job, but accept any job whose name starts with this string.')
-  options.add_argument('-P', '--pause', action='store_true',
-    help='Do not begin executing yet..')
+  options.add_argument('-P', '--pause', action='store_true', default=None,
+    help='Do not begin executing yet.')
   options.add_argument('-i', '--check-interval', type=int, default=15,
     help='How many seconds to wait between checks for available resources. Default: %(default)s')
   options.add_argument('--mock-sinfo', type=pathlib.Path)
@@ -189,7 +189,7 @@ def main(argv):
       last_reason = reason_msg
       time.sleep(args.check_interval)
       if args.config:
-        params.update_with_config(args.config)
+        params = Parameters(args=args, config=args.config)
     if params.stop:
       logging.warning(f'Instructed to stop by {args.config}.')
       node = 'STOP'
