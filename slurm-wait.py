@@ -177,7 +177,7 @@ def main(argv):
     )
     if node is None and reason_msg is None:
       reason_msg = f'No node currently fits the given constraints ({params})'
-    if params.min_jobs and running_jobs < params.min_jobs and not args.pause:
+    if params.min_jobs and running_jobs < params.min_jobs and not params.pause:
       if wait or node is None:
         logging.warning(
           f"You're running fewer than {params.min_jobs} jobs. Ignoring limits and continuing."
@@ -524,20 +524,6 @@ def read_file(path, coerce_type=None):
         return coerce_type(line)
       else:
         return line
-
-
-def read_mock_sinfo(path):
-  """Format: 4 space-delimited columns: node, total CPUs, free CPUs, free mem (GB)."""
-  states = {}
-  with path.open() as sinfo_file:
-    for line in sinfo_file:
-      fields = line.split()
-      name = fields[0]
-      cpus = int(fields[1])
-      idle = int(fields[2])
-      mem = int(fields[3]) * 1024**3
-      states[name] = {'name':name, 'cpus':cpus, 'idle':idle, 'mem':mem}
-  return states
 
 
 def fail(message):
