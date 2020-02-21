@@ -195,7 +195,7 @@ def main(argv):
       node = 'STOP'
       break
 
-  logging.warning(f'wait: {wait!r}, node: {node!r}.')
+  logging.debug(f'wait: {wait!r}, node: {node!r}.')
 
   if node is not None:
     print(abbrev_node(node))
