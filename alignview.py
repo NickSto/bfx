@@ -98,6 +98,8 @@ def get_format(format, input):
   if format:
     if format == 'msa':
       return 'tsv'
+    else:
+      return format
   else:
     if input is sys.stdin:
       fail('Error: Must give the --format if reading from stdin.')
