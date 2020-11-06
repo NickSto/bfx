@@ -188,6 +188,45 @@ def get_context(test_name):
         print('success')
 
 
+def trimmer(test_name):
+  script_name = 'trimmer.py'
+  script = ROOT_DIR / script_name
+  test_data = (
+    {
+      'inputs': ('trimmer.in_1.fq', 'trimmer.in_2.fq'),
+      'outputs': ('trimmer.out_1.fq', 'trimmer.out_2.fq'),
+      'args': (
+        '--format', 'fastq', '--filt-bases', 'ACGT', '--thres', '0.1', '--window', '10',
+        '--invert', '--min-length', '10'
+      ),
+    },
+  )
+  for test in test_data:
+    out1 = 'trimmer.out.tmp_1.fq'
+    out2 = 'trimmer.out.tmp_2.fq'
+    print(f'{test_name} ::: {script_name} ::: {test["inputs"][0]}/{test["inputs"][1]}\t', end='')
+    cmd = (script, *test['args'], *test['inputs'], out1, out2)
+    exit_code = run_command(cmd, onerror='stderr')
+    if exit_code != 0:
+      print('FAILED')
+    else:
+      diff_datas = []
+      for expected_file, actual_file in zip(test['outputs'], (out1, out2)):
+        expected = read_file(TESTS_DIR/expected_file)
+        actual = read_file(TESTS_DIR/actual_file)
+        if expected != actual:
+          diff = trimmed_diff(expected.splitlines(), actual.splitlines())
+          diff_datas.append({'diff':diff, 'expected':expected_file, 'actual':actual_file})
+      if diff_datas:
+        print('FAILED')
+        for diff_data in diff_datas:
+          print('{expected} vs {actual}:'.format(**diff_data))
+          print('\n'.join(diff))
+      else:
+        print('success')
+    cleanup(TESTS_DIR/out1, TESTS_DIR/out2)
+
+
 GlobalsAfterActive = globals().copy()
 
 
@@ -264,8 +303,8 @@ def read_file(path):
   try:
     with path.open('r') as file:
       return file.read()
-  except OSError:
-    logging.error('Error: {}'.format(error))
+  except OSError as error:
+    logging.error(f'Error: {error}')
     return None
 
 
@@ -284,6 +323,11 @@ def trimmed_diff(lines1, lines2, lineterm=''):
       header_line = None
     if header_line is None:
       yield line
+
+
+def cleanup(*paths):
+  for path in paths:
+    os.remove(path)
 
 
 def fail(message):
