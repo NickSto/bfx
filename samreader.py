@@ -51,6 +51,7 @@ class Alignment(object):
           setattr(self, name, kwargs[name])
       if 'tags' in kwargs:
         self.tags = kwargs['tags']
+      self.line_num = kwargs.get('line_num')
     self._length = None
   @property
   def mate(self):
@@ -129,9 +130,7 @@ class Alignment(object):
   # Tags.
   @property
   def tags(self):
-    # Parse tags lazily.
-    if self._tags is None:
-      self._tags, self._tag_types = self._parse_tags(self._raw_tags)
+    self._verify_tags_are_parsed()
     return self._tags
   @tags.setter
   def tags(self, value):
@@ -140,14 +139,21 @@ class Alignment(object):
     self._tags = value
   @property
   def tag_types(self):
-    if self._tag_types is None:
-      self._tags, self._tag_types = self._parse_tags(self._raw_tags)
+    self._verify_tags_are_parsed()
     return self._tag_types
   @tag_types.setter
   def tag_types(self, value):
     if not isinstance(value, dict):
       raise ValueError(f'Tag types must be a dict. Received a {type(value)} instead.')
     self._tag_types = value
+  def _verify_tags_are_parsed(self):
+    # Parse tags lazily.
+    if self._tags is None or self._tag_types is None:
+      try:
+        self._tags, self._tag_types = self._parse_tags(self._raw_tags)
+      except FormatError as error:
+        error.line_num = self.line_num
+        raise error
   @classmethod
   def _parse_tags(cls, tags_list):
     tags = {}
@@ -247,7 +253,7 @@ def read(filehandle, header=False):
         yield fields
       continue
     try:
-      yield Alignment(fields)
+      yield Alignment(fields, line_num=line_num)
     except FormatError as error:
       error.line_num = line_num
       raise error
@@ -259,9 +265,15 @@ def is_header(fields):
 
 class FormatError(Exception):
   def __init__(self, message=None, line_num=None):
+    self.message = message
     if message:
       Exception.__init__(self, message)
     self.line_num = line_num
+  def __str__(self):
+    if self.line_num is not None:
+      return f'on line {self.line_num}: {self.message}'
+    else:
+      return self.message
 
 
 #################### Command Line Interface ####################
