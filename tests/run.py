@@ -202,10 +202,11 @@ def trimmer(test_name):
     },
   )
   for test in test_data:
-    out1 = 'trimmer.out.tmp_1.fq'
-    out2 = 'trimmer.out.tmp_2.fq'
+    out1 = TESTS_DIR/'trimmer.out.tmp_1.fq'
+    out2 = TESTS_DIR/'trimmer.out.tmp_2.fq'
     print(f'{test_name} ::: {script_name} ::: {test["inputs"][0]}/{test["inputs"][1]}\t', end='')
-    cmd = (script, *test['args'], *test['inputs'], out1, out2)
+    input_paths = [TESTS_DIR/filename for filename in test['inputs']]
+    cmd = (script, *test['args'], *input_paths, out1, out2)
     exit_code = run_command(cmd, onerror='stderr')
     if exit_code != 0:
       print('FAILED')
