@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# A very simple module to hold code for quick parsing of SAM file fields
+# A simple module to hold code for quick parsing of SAM file fields
 import argparse
 import logging
 import re
@@ -28,7 +28,7 @@ FIELDS = (
 
 class Alignment(object):
   def __init__(self, fields=None, **kwargs):
-    self._tags = None
+    self._cache = {}
     self._raw_tags = None
     if fields is not None:
       if len(fields) < 11:
@@ -52,7 +52,6 @@ class Alignment(object):
       if 'tags' in kwargs:
         self.tags = kwargs['tags']
       self.line_num = kwargs.get('line_num')
-    self._length = None
   @property
   def mate(self):
     if self._flag_cmp(64):
@@ -113,9 +112,9 @@ class Alignment(object):
   # Read length.
   @property
   def length(self):
-    if self._length is None:
-      self._length = self._compute_read_length(self.seq, self.cigar)
-    return self._length
+    if 'length' not in self._cache:
+      self._cache['length'] = self._compute_read_length(self.seq, self.cigar)
+    return self._cache['length']
   @classmethod
   def _compute_read_length(cls, seq, cigar):
     """Compute the read length from the length of the SEQ field plus any hard-clipped bases."""
@@ -131,26 +130,26 @@ class Alignment(object):
   @property
   def tags(self):
     self._verify_tags_are_parsed()
-    return self._tags
+    return self._cache['tags']
   @tags.setter
   def tags(self, value):
     if not isinstance(value, dict):
       raise ValueError(f'Tags must be a dict. Received a {type(value)} instead.')
-    self._tags = value
+    self._cache['tags'] = value
   @property
   def tag_types(self):
     self._verify_tags_are_parsed()
-    return self._tag_types
+    return self._cache['tag_types']
   @tag_types.setter
   def tag_types(self, value):
     if not isinstance(value, dict):
       raise ValueError(f'Tag types must be a dict. Received a {type(value)} instead.')
-    self._tag_types = value
+    self._cache['tag_types'] = value
   def _verify_tags_are_parsed(self):
     # Parse tags lazily.
-    if self._tags is None or self._tag_types is None:
+    if 'tags' not in self._cache or 'tag_types' not in self._cache:
       try:
-        self._tags, self._tag_types = self._parse_tags(self._raw_tags)
+        self._cache['tags'], self._cache['tag_types'] = self._parse_tags(self._raw_tags)
       except FormatError as error:
         error.line_num = self.line_num
         raise error
