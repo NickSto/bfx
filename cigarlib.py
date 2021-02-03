@@ -104,8 +104,7 @@ def get_contiguous_blocks(ref_pos, cigar_list, reverse, read_len):
   read_pos_start = read_pos
   blocks = []
   # logging.info('Ref starting at {}, read {}.'.format(ref_pos, read_pos))
-  while cigar_list:
-    cigar_size, cigar_op = cigar_list.pop( 0 )
+  for cigar_size, cigar_op in cigar_list:
     # logging.info('Saw {}{}.'.format(cigar_size, OP_INTS_TO_CHARS[cigar_op]))
     # M alignment match (can be a sequence match or mismatch)
     # = sequence match
