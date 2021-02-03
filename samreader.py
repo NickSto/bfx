@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-# A simple module to hold code for quick parsing of SAM file fields
+# A not-so-simple module to hold code for quick parsing of SAM file fields
 import argparse
 import logging
 import re
+import subprocess
 import sys
 try:
   import cigarlib
@@ -113,23 +114,26 @@ class Alignment(object):
   @property
   def length(self):
     if 'length' not in self._cache:
-      self._cache['length'] = self._compute_read_length(self.seq, self.cigar)
+      if self.cigar is None:
+        #TODO: Maybe could just return len(self.seq). If it's not mapped, then there presumably
+        #      wouldn't be any clipping. But would need to double-check that assumption.
+        raise FormatError(
+          f'No CIGAR string present. Cannot determine read length.', line_num=self.line_num
+        )
+      self._cache['length'] = self._compute_read_length(self.seq, self._cigar_list)
     return self._cache['length']
   @classmethod
-  def _compute_read_length(cls, seq, cigar):
+  def _compute_read_length(cls, seq, cigar_list):
     """Compute the read length from the length of the SEQ field plus any hard-clipped bases."""
     length = len(seq)
-    if cigar is None:
-      return length
-    actions = cigarlib.split_cigar(cigar)
-    for oplen, op in actions:
+    for oplen, op in cigar_list:
       if op == 'H':
         length += oplen
     return length
   # Tags.
   @property
   def tags(self):
-    self._verify_tags_are_parsed()
+    self._ensure_tags_are_parsed()
     return self._cache['tags']
   @tags.setter
   def tags(self, value):
@@ -138,14 +142,14 @@ class Alignment(object):
     self._cache['tags'] = value
   @property
   def tag_types(self):
-    self._verify_tags_are_parsed()
+    self._ensure_tags_are_parsed()
     return self._cache['tag_types']
   @tag_types.setter
   def tag_types(self, value):
     if not isinstance(value, dict):
       raise ValueError(f'Tag types must be a dict. Received a {type(value)} instead.')
     self._cache['tag_types'] = value
-  def _verify_tags_are_parsed(self):
+  def _ensure_tags_are_parsed(self):
     # Parse tags lazily.
     if 'tags' not in self._cache or 'tag_types' not in self._cache:
       try:
@@ -219,10 +223,57 @@ class Alignment(object):
       tag_str = f'{tag_name}:{tag_type}:{value_str}'
       raise FormatError(f'Invalid tag. Unrecognized type {tag_type!r} in {tag_str!r}')
     return value
+  # CIGAR stuff. Basically just providing direct (and cached) access to cigarlib.
+  @property
+  def _cigar_list(self):
+    if 'cigar_list' not in self._cache:
+      self._cache['cigar_list'] = cigarlib.split_cigar(self.cigar)
+    return self._cache['cigar_list']
+  @property
+  def _contiguous_blocks(self):
+    if 'contiguous_blocks' not in self._cache:
+      self._cache['contiguous_blocks'] = cigarlib.get_contiguous_blocks(
+        self.pos, self._cigar_list, self.reverse, len(self.seq)
+      )
+    return self._cache['contiguous_blocks']
+  @property
+  def _insertions(self):
+    self._ensure_indels_are_parsed()
+    return self._cache['insertions']
+  @property
+  def _deletions(self):
+    self._ensure_indels_are_parsed()
+    return self._cache['deletions']
+  def _ensure_indels_are_parsed(self):
+    if 'insertions' not in self._cache or 'deletions' not in self._cache:
+      indels = cigarlib.get_indels(self._contiguous_blocks, self.reverse)
+      self._cache['insertions'], self._cache['deletions'] = indels
+  def indel_at(self, position, check_insertions=True, check_deletions=True):
+    return cigarlib.indel_at(
+      position, self._insertions, self._deletions, check_insertions=True, check_deletions=True
+    )
+  def to_ref_coord(self, read_coord):
+    if self.mapped:
+      return cigarlib.to_ref_coord(self._contiguous_blocks, read_coord)
+    else:
+      return None
+  def get_end_position(self):
+    return cigarlib.get_end_position(self._contiguous_blocks)
 
 
 def make_tag_error(tag_name, tag_type, value_str, message):
   return FormatError(f'Invalid {tag_name} tag. Type is {tag_type!r} but {message}: {value_str!r}')
+
+
+def read_bam(bam_path, header=False):
+  sam = open_bam(bam_path)
+  return read(sam, header=header)
+
+
+def open_bam(bam_path):
+  command = ('samtools', 'view', '-h', bam_path)
+  process = subprocess.Popen(command, encoding='utf8', stdout=subprocess.PIPE)
+  return process.stdout
 
 
 def read(filehandle, header=False):
