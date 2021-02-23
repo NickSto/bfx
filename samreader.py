@@ -10,7 +10,7 @@ try:
 except ImportError:
   from bfx import cigarlib
 
-__version__ = '0.8'
+__version__ = '0.10'
 NULL_STR = '*'
 HEADER_REGEX = r'^@[A-Za-z][A-Za-z]$'
 FIELDS = (
@@ -26,8 +26,26 @@ FIELDS = (
   {'name':'seq', 'type':str},
   {'name':'qual', 'type':str},
 )
+FLAGS = {
+  'paired': 1,
+  'proper': 2,
+  'unmapped': 4,
+  'mapped':  -4,
+  'mate_unmapped': 8,
+  'reverse':  16,
+  'reversed': 16,
+  'forward': -16,
+  'mate_reverse': 32,
+  'first': 64,
+  'second': 128,
+  'secondary': 256,
+  'primary':  -256,
+  'lowqual': 512,
+  'duplicate': 1024,
+  'supplemental': 2048,
+}
 
-class Alignment(object):
+class Alignment:
   def __init__(self, fields=None, **kwargs):
     self._cache = {}
     self._raw_tags = None
@@ -59,57 +77,18 @@ class Alignment(object):
       return 1
     elif self._flag_cmp(128):
       return 2
-  # Shorthands for all the flags.
+  # Present an attribute for each flag bit (and some of their opposites).
+  def __getattr__(self, attr):
+    try:
+      flag_int = FLAGS[attr]
+      if flag_int >= 0:
+        return self._flag_cmp(flag_int)
+      else:
+        return not self._flag_cmp(-flag_int)
+    except KeyError:
+      raise AttributeError(f'{type(self).__name__!r} object has no attribute named {attr!r}')
   def _flag_cmp(self, bit):
     return bool(self.flag & bit)
-  @property
-  def paired(self):
-    return self._flag_cmp(1)
-  @property
-  def proper(self):
-    return self._flag_cmp(2)
-  @property
-  def unmapped(self):
-    return self._flag_cmp(4)
-  @property
-  def mapped(self):
-    return not self._flag_cmp(4)
-  @property
-  def mate_unmapped(self):
-    return self._flag_cmp(8)
-  @property
-  def reverse(self):
-    return self._flag_cmp(16)
-  @property
-  def reversed(self):
-    return self.reverse
-  @property
-  def forward(self):
-    return not self._flag_cmp(16)
-  @property
-  def mate_reverse(self):
-    return self._flag_cmp(32)
-  @property
-  def first(self):
-    return self._flag_cmp(64)
-  @property
-  def second(self):
-    return self._flag_cmp(128)
-  @property
-  def primary(self):
-    return not self._flag_cmp(256)
-  @property
-  def secondary(self):
-    return self._flag_cmp(256)
-  @property
-  def lowqual(self):
-    return self._flag_cmp(512)
-  @property
-  def duplicate(self):
-    return self._flag_cmp(1024)
-  @property
-  def supplemental(self):
-    return self._flag_cmp(2048)
   # Read length.
   @property
   def length(self):
