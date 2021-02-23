@@ -66,8 +66,11 @@ class Read(object):
   def __init__(self, name='', seq='', id_='', qual='', qual_format='sanger'):
     self.name = name
     self.seq = seq
-    self.id = id_
     self.qual = qual
+    if id_ or not self.name:
+      self.id = id_
+    elif self.name:
+      self.id = self.name.split()[0]
     self.offset = QUAL_OFFSETS[qual_format]
   @property
   def scores(self):
@@ -77,6 +80,27 @@ class Read(object):
     for qual_char in self.qual:
       scores.append(ord(qual_char) - self.offset)
     return scores
+  def to_fasta(self):
+    return f'>{self.name}\n{self.seq}'
+  def to_fastq(self):
+    return f'@{self.name}\n{self.seq}\n+\n{self.qual}'
+  def __str__(self):
+    if self.qual:
+      return self.to_fastq()
+    else:
+      return self.to_fasta()
+  def __repr__(self):
+    kwarg_strs = []
+    for kwarg in 'name', 'seq', 'id_', 'qual':
+      attr = kwarg.rstrip('_')
+      raw_value = getattr(self, attr)
+      if raw_value is not None and len(raw_value) >= 200:
+        value = raw_value[:199]+'…'
+      else:
+        value = raw_value
+      if value:
+        kwarg_strs.append(f'{kwarg}={value!r}')
+    return type(self).__name__+'('+', '.join(kwarg_strs)+')'
 
 
 class Reader(object):
