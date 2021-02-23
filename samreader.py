@@ -44,6 +44,20 @@ FLAGS = {
   'duplicate': 1024,
   'supplemental': 2048,
 }
+FLAG_DESCRIPTIONS = {
+  1: 'Read paired',
+  2: 'Read mapped in proper pair',
+  4: 'read unmapped',
+  8: 'mate unmapped',
+  16: 'read reverse strand',
+  32: 'mate reverse strand',
+  64: 'first in pair',
+  128: 'second in pair',
+  256: 'not primary alignment',
+  512: 'read fails platform/vendor quality checks',
+  1024: 'read is pcr or optical duplicate',
+  2048: 'supplementary alignment',
+}
 
 class Alignment:
   def __init__(self, fields=None, **kwargs):
@@ -89,6 +103,19 @@ class Alignment:
       raise AttributeError(f'{type(self).__name__!r} object has no attribute named {attr!r}')
   def _flag_cmp(self, bit):
     return bool(self.flag & bit)
+  def explain_flag(self, no_print=False):
+    outlines = []
+    for flag_int, description in FLAG_DESCRIPTIONS.items():
+      if self._flag_cmp(flag_int):
+        check = 'X'
+      else:
+        check = ' '
+      outlines.append(f'[{check}] {flag_int:4d} {description}')
+    output = '\n'.join(outlines)
+    if no_print:
+      return output
+    else:
+      print(output)
   # Read length.
   @property
   def length(self):
@@ -238,6 +265,8 @@ class Alignment:
       return None
   def get_end_position(self):
     return cigarlib.get_end_position(self._contiguous_blocks)
+  def __repr__(self):
+    return f'<{type(self).__name__} {self.qname}/{self.mate}>'
 
 
 def make_tag_error(tag_name, tag_type, value_str, message):
