@@ -87,26 +87,26 @@ class Alignment:
       self.line_num = kwargs.get('line_num')
   @property
   def mate(self):
-    if self._flag_cmp(64):
+    if self.has_flag(64):
       return 1
-    elif self._flag_cmp(128):
+    elif self.has_flag(128):
       return 2
   # Present an attribute for each flag bit (and some of their opposites).
   def __getattr__(self, attr):
     try:
       flag_int = FLAGS[attr]
       if flag_int >= 0:
-        return self._flag_cmp(flag_int)
+        return self.has_flag(flag_int)
       else:
-        return not self._flag_cmp(-flag_int)
+        return not self.has_flag(-flag_int)
     except KeyError:
       raise AttributeError(f'{type(self).__name__!r} object has no attribute named {attr!r}')
-  def _flag_cmp(self, bit):
+  def has_flag(self, bit):
     return bool(self.flag & bit)
   def explain_flag(self, no_print=False):
     outlines = []
     for flag_int, description in FLAG_DESCRIPTIONS.items():
-      if self._flag_cmp(flag_int):
+      if self.has_flag(flag_int):
         check = 'X'
       else:
         check = ' '
