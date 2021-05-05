@@ -55,6 +55,10 @@ def make_argparser():
     help='The order of the family you want to view.')
   msa.add_argument('-m', '--mate', choices=('0', '1', '2'),
     help='The mate of the family you want to view.')
+  parser.add_argument('-H', '--no-hide-low-qual', dest='hide_low_qual', default=True,
+    action='store_false',
+    help="Don't hide bases below the --qual-thres. Normally they're replaced with blank spaces. "
+      'This means the --qual-thres will only be used for consensus calling.')
   log = parser.add_argument_group('Logging')
   log.add_argument('-l', '--log', type=argparse.FileType('w'), default=sys.stderr,
     help='Print log messages to this file instead of to stderr. Warning: Will overwrite the file.')
@@ -87,7 +91,9 @@ def main(argv):
   if len(seqs) == 0 or len(quals) == 0:
     fail('Error: No sequences found.')
 
-  masked_seqs, consensus = mask_seqs(seqs, quals, seqlen, args.qual_thres, args.cons_thres)
+  masked_seqs, consensus = mask_seqs(
+    seqs, quals, seqlen, args.qual_thres, args.cons_thres, hide_low=args.hide_low_qual,
+  )
 
   print(consensus)
   for seq in masked_seqs:
@@ -176,7 +182,7 @@ def read_quals(infile, seqlen, offset):
   return all_quals
 
 
-def mask_seqs(seqs, quals, seqlen, qual_thres, cons_thres):
+def mask_seqs(seqs, quals, seqlen, qual_thres, cons_thres, hide_low=True):
   mismatches = 0
   consensus = ''
   masked_seqs = [''] * len(seqs)
@@ -194,7 +200,7 @@ def mask_seqs(seqs, quals, seqlen, qual_thres, cons_thres):
         cons_base = base
     consensus += cons_base
     for s in range(len(seqs)):
-      if not good_quality(s, b, quals, qual_thres):
+      if hide_low and not good_quality(s, b, quals, qual_thres):
         masked_seqs[s] += ' '
         continue
       if seqs[s][b] == cons_base:
