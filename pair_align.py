@@ -59,7 +59,7 @@ def main(argv):
     args.seq1, args.seq2, scope=args.scope, gap_open=args.gap_open, gap_extend=args.gap_extend,
     matrix_file=matrix_path
   )
-  print(alignment, end='')
+  print(alignment)
 
 
 def align(seq1, seq2, **kwargs):
@@ -98,12 +98,24 @@ class Aligner:
   def align(self, seq1, seq2):
     alignments = self._aligner.align(seq1, seq2)
     if len(alignments) > 0:
-      return alignments[0]
+      return Alignment(alignments[0])
     else:
       return None
 
   def aligns(self, seq1, seq2):
-    return self._aligner.align(seq1, seq2)
+    alignments = self._aligner.align(seq1, seq2)
+    return (Alignment(aln) for aln in alignments)
+
+
+class Alignment:
+  def __init__(self, alignment):
+    self.target, self.matches_str, self.query = str(alignment).splitlines()
+    self.score = alignment.score
+
+  # Provide this common function.
+  def __str__(self):
+    """Print a human-readable representation of the alignment."""
+    return '\n'.join((self.target, self.matches_str, self.query))
 
 
 def fail(message):
