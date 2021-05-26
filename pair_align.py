@@ -4,10 +4,21 @@ import logging
 import pathlib
 import sys
 try:
-  from Bio.Align import PairwiseAligner, substitution_matrices
+  from Bio.Align import PairwiseAligner
 except ImportError:
-  print('This requires BioPython to be installed.', file=sys.stderr)
+  print(
+    'Error importing Bio.Align.PairwiseAligner. Make sure BioPython is properly installed.',
+    file=sys.stderr
+  )
   raise
+try:
+  from Bio.Align import substitution_matrices
+except ImportError:
+  substitution_matrices = None
+  print(
+    'Error loading `Bio.Align.substitution_matrices`. Using shim instead. Install BioPython '
+    '1.75 or later to use the native version.', file=sys.stderr
+  )
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 DEFAULT_MATRIX = SCRIPT_DIR/'sub-matrix.txt'
@@ -75,7 +86,10 @@ class Aligner:
     if matrix is None:
       if not matrix_file:
         raise RuntimeError(f'Must give either a `matrix` or `matrix_file` to {type(self).__name__}')
-      matrix = substitution_matrices.read(matrix_file)
+      if substitution_matrices is None:
+        matrix = substitution_matrix_loader(matrix_file)
+      else:
+        matrix = substitution_matrices.read(matrix_file)
     self._aligner = PairwiseAligner()
     self._aligner.mode = scope
     # The gap penalty values are actually *added* to the alignment score, so if you're using the
@@ -112,10 +126,31 @@ class Alignment:
     self.target, self.matches_str, self.query = str(alignment).splitlines()
     self.score = alignment.score
 
-  # Provide this common function.
   def __str__(self):
     """Print a human-readable representation of the alignment."""
     return '\n'.join((self.target, self.matches_str, self.query))
+
+
+def substitution_matrix_loader(matrix_path):
+  x_bases = None
+  matrix = {}
+  with matrix_path.open() as matrix_file:
+    for line_num, line_raw in enumerate(matrix_file,1):
+      line = line_raw.strip()
+      if line.startswith('#'):
+        continue
+      if x_bases is None:
+        x_bases = line.split()
+        continue
+      y_base, *score_strs = line.split()
+      scores = [float(s) for s in score_strs]
+      if len(scores) != len(x_bases):
+        raise ValueError(
+          f'Line {line_num} has {len(scores)} scores but the header has {len(x_bases)} bases.'
+        )
+      for x_base, score in zip(x_bases, scores):
+        matrix[(x_base,y_base)] = score
+  return matrix
 
 
 def fail(message):
