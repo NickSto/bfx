@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
 import ctypes
 import errno
 import os
-import string
 import sys
-PY3 = sys.version_info.major >= 3
 
 # Locate the library file.
 LIBFILE = 'libswalign.so'
@@ -21,10 +15,7 @@ if not os.path.isfile(library_path):
 
 swalign = ctypes.cdll.LoadLibrary(library_path)
 
-if PY3:
-  REVCOMP_TABLE = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
-else:
-  REVCOMP_TABLE = string.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
+REVCOMP_TABLE = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
 
 
 # C struct for ctypes
@@ -53,12 +44,8 @@ class AlignC(ctypes.Structure):
 # The Python version
 class Align(object):
   def __init__(self, align_c):
-    if PY3:
-      self.target = str(align_c.seqs.contents.a, 'utf8')
-      self.query = str(align_c.seqs.contents.b, 'utf8')
-    else:
-      self.target = str(align_c.seqs.contents.a)
-      self.query = str(align_c.seqs.contents.b)
+    self.target = str(align_c.seqs.contents.a, 'utf8')
+    self.query = str(align_c.seqs.contents.b, 'utf8')
     # Where the first base of the target aligns on the query, in query coordinates (or 1, if <= 0).
     self.start_target = align_c.start_a
     # Where the first base of the query aligns on the target, in target coordinates (or 1, if <= 0).
@@ -99,12 +86,8 @@ swalign.revcomp.restype = ctypes.c_char_p
 
 
 def smith_waterman(target_raw, query_raw, local=True, debug=False):
-  if PY3:
-    target_bytes = bytes(target_raw, 'utf8')
-    query_bytes = bytes(query_raw, 'utf8')
-  else:
-    target_bytes = bytes(target_raw)
-    query_bytes = bytes(query_raw)
+  target_bytes = bytes(target_raw, 'utf8')
+  query_bytes = bytes(query_raw, 'utf8')
   seq_pair = SeqPairC(target_bytes, len(target_raw), query_bytes, len(query_raw))
   align_c = swalign.smith_waterman(ctypes.pointer(seq_pair), bool(local), bool(debug)).contents
   return Align(align_c)
@@ -127,13 +110,6 @@ def revcomp(seq):
   """Return the reverse complement of the input sequence.
   Leaves the input string unaltered."""
   return seq.translate(REVCOMP_TABLE)[::-1]
-
-
-def revcomp_inplace(seq):
-  """Convert the input sequence to its reverse complement.
-  WARNING: This will alter the input string in-place!"""
-  assert not PY3, 'This method is not compatible with Python 3!'
-  swalign.revcomp(seq)
 
 
 ########## Command-line interface ##########
