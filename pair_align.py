@@ -151,14 +151,14 @@ class Aligner:
 
   def align(self, seq1, seq2):
     bp_alignments = self._aligner.align(seq1, seq2)
-    if len(bp_alignments) > 0:
-      alignment = Alignment(bp_alignment=bp_alignments[0], aligner=self)
+    for bp_alignment in bp_alignments:
+      alignment = Alignment(bp_alignment=bp_alignment, aligner=self)
       if self.trim:
         return alignment.trimmed()
       else:
         return alignment
-    else:
-      return None
+    # No alignments?
+    return None
 
   def aligns(self, seq1, seq2):
     bp_alignments = self._aligner.align(seq1, seq2)
@@ -212,7 +212,7 @@ class Alignment:
       good_match = True
       try:
         score = self.aligner.matrix[(base1,base2)]
-      except IndexError:
+      except (KeyError, IndexError):
         good_match = False
       else:
         if score < thres_score:
