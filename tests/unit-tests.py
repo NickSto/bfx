@@ -9,6 +9,7 @@ import unittest
 script_dir = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(script_dir.parent))
 import cigarlib
+import swalign
 
 DESCRIPTION = """Run unit(ish) tests."""
 
@@ -31,6 +32,49 @@ def main(argv):
   logging.basicConfig(stream=args.log, level=args.volume, format='%(message)s')
   unittest.main()
 
+
+class TestFactory(unittest.TestCase):
+
+  @classmethod
+  def make_tests(cls):
+    for i, data in enumerate(cls.test_data, 1):
+      test_function = cls.make_test(**data)
+      name = data.get('name', i)
+      setattr(cls, f'test_{name}', test_function)
+
+
+########## swalign ##########
+
+class SwalignTest(TestFactory):
+
+  @classmethod
+  def make_test(cls, **kwargs):
+    def test(self):
+      result = swalign.smith_waterman(kwargs['target_in'], kwargs['query_in'], kwargs['local'])
+      self.assertEqual(result.target, kwargs['target_out'])
+      self.assertEqual(result.query, kwargs['query_out'])
+    return test
+
+  test_data = (
+    {'name':'overlap_global', 'target_in':'GGTCGACTAC', 'query_in':'GACTACGATT', 'local':False,
+     'target_out':'GGTCGACTAC----',
+     'query_out': '----GACTACGATT'},
+    {'name':'overlap_local', 'target_in':'GGTCGACTAC', 'query_in':'GACTACGATT', 'local':True,
+     'target_out':'GGTCGACTAC',
+     'query_out': '----GACTAC'},
+    {'name':'middle_global', 'target_in':'TTCTGATTACAGAATA', 'query_in':'CAACGATTACACTCCG',
+     'local':False, 'target_out':'TCTGATTACAGAATA--',
+                     'query_out':'AC-GATTACAC--TCCG'},
+    {'name':'middle_local', 'target_in':'TTCTGATTACAGAATA', 'query_in':'CAACGATTACACTCCG',
+     'local':True, 'target_out':'TCTGATTACA',
+                    'query_out':'AC-GATTACA'},
+  )
+
+SwalignTest.make_tests()
+
+
+########## cigarlib ##########
+
 """
 Find an example of a type of CIGAR string:
 $ samtools view duplex.down10.bam | awk '! and($2, 16) && $3 == "chrM" && $6 ~ /^[0-9]*M[0-9]*S$/ {print $6}' | sort | uniq -c | sort -g -k 1 | head
@@ -43,7 +87,7 @@ Try converting some coordinates:
 $ samtools view duplex.down10.bam | grep AACCCAAGTGACTGCTCGCACTTA | ./cigar.py 255
 """
 
-class CigarTest(unittest.TestCase):
+class CigarTest(TestFactory):
 
   @classmethod
   def get_blocks(cls, pos, cigar, flags, readlen):
@@ -51,12 +95,6 @@ class CigarTest(unittest.TestCase):
     blocks = cigarlib.get_contiguous_blocks(pos, cigar_list, flags & 16, readlen)
     logging.info(blocks)
     return blocks
-
-  @classmethod
-  def make_tests(cls):
-    for data in cls.test_data:
-      test_function = cls.make_test(**data)
-      setattr(cls, 'test_'+data['name'], test_function)
 
 
 class CigarConversionTest(CigarTest):
