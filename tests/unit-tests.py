@@ -10,6 +10,7 @@ script_dir = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(script_dir.parent))
 import cigarlib
 import swalign
+import intervallib
 
 DESCRIPTION = """Run unit(ish) tests."""
 
@@ -382,6 +383,78 @@ class CigarEndPositionTest(CigarTest):
   )
 
 CigarEndPositionTest.make_tests()
+
+
+########## intervallib ##########
+
+class FindIntervalTest(TestFactory):
+
+  @classmethod
+  def make_test(cls, coord=None, i=None, intervals=None):
+    def test(self):
+      actual_i = intervallib.find_interval_i(coord, intervals)
+      self.assertEqual(i, actual_i)
+    return test
+
+  intervals1 = (
+    ( 5, 10),
+    (15, 20),
+    (22, 25),
+    (30, 40),
+    (50, 60),
+    (70, 80),
+  )
+
+  intervals2 = (
+    ( 4,  9),
+    (13, 18),
+    (20, 71),
+  )
+
+  test_data = (
+    {'coord':11, 'i': 0, 'intervals':()},
+    {'coord': 1, 'i':-1, 'intervals':intervals1},
+    {'coord': 7, 'i': 0, 'intervals':intervals1},
+    {'coord':12, 'i': 0, 'intervals':intervals1},
+    {'coord':17, 'i': 1, 'intervals':intervals1},
+    {'coord':21, 'i': 1, 'intervals':intervals1},
+    {'coord':24, 'i': 2, 'intervals':intervals1},
+    {'coord':27, 'i': 2, 'intervals':intervals1},
+    {'coord':35, 'i': 3, 'intervals':intervals1},
+    {'coord':45, 'i': 3, 'intervals':intervals1},
+    {'coord':55, 'i': 4, 'intervals':intervals1},
+    {'coord':65, 'i': 4, 'intervals':intervals1},
+    {'coord':75, 'i': 5, 'intervals':intervals1},
+    {'coord':85, 'i': 5, 'intervals':intervals1},
+    {'coord': 1, 'i':-1, 'intervals':intervals2},
+    {'coord': 4, 'i': 0, 'intervals':intervals2},
+    {'coord':10, 'i': 0, 'intervals':intervals2},
+    {'coord':18, 'i': 1, 'intervals':intervals2},
+    {'coord':19, 'i': 1, 'intervals':intervals2},
+    {'coord':50, 'i': 2, 'intervals':intervals2},
+    {'coord':99, 'i': 2, 'intervals':intervals2},
+  )
+
+FindIntervalTest.make_tests()
+
+
+class IntersectIntervalTest(TestFactory):
+
+  @classmethod
+  def make_test(cls, query_interval=None, intervals=None, intersection=None):
+    def test(self):
+      result = intervallib.intersect_intervals(query_interval, intervals)
+      self.assertEqual(result, intersection)
+    return test
+
+  intervals1 = [(5, 12), (15, 25), (30, 40)]
+
+  test_data = (
+    {'query_interval':(10, 20), 'intervals':intervals1, 'intersection':[(10, 12), (15, 20)]},
+    {'query_interval':(26, 28), 'intervals':intervals1, 'intersection':[]},
+  )
+
+IntersectIntervalTest.make_tests()
 
 
 if __name__ == '__main__':
