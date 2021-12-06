@@ -263,6 +263,11 @@ class Alignment:
       return cigarlib.to_ref_coord(self._contiguous_blocks, read_coord)
     else:
       return None
+  def to_read_coord(self, ref_coord):
+    if self.mapped:
+      return cigarlib.to_read_coord(self._contiguous_blocks, ref_coord)
+    else:
+      return None
   def get_end_position(self):
     return cigarlib.get_end_position(self._contiguous_blocks)
   def __repr__(self):
