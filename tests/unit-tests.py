@@ -8,9 +8,9 @@ import unittest
 # Path hack to load modules from the parent directory.
 script_dir = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(script_dir.parent))
-import cigarlib
-import swalign
-import intervallib
+import cigarlib    # pylint: disable=import-error
+import swalign     # pylint: disable=import-error
+import intervallib # pylint: disable=import-error
 
 DESCRIPTION = """Run unit(ish) tests."""
 
@@ -38,6 +38,7 @@ class TestFactory(unittest.TestCase):
 
   @classmethod
   def make_tests(cls):
+    # pylint: disable=no-member
     for i, data in enumerate(cls.test_data, 1):
       test_function = cls.make_test(**data)
       name = data.get('name', i)
@@ -101,51 +102,58 @@ class CigarTest(TestFactory):
 class CigarConversionTest(CigarTest):
 
   @classmethod
-  def make_test(cls, name=None, pos=None, cigar=None, flags=None, readlen=None, in_out_pairs=None):
+  def make_test(cls, name=None, pos=None, cigar=None, flags=None, readlen=None, read_ref_pairs=None):
     def test(self):
       blocks = CigarTest.get_blocks(pos, cigar, flags, readlen)
-      for read_coord, ref_coord in in_out_pairs:
-        result = cigarlib.to_ref_coord(blocks, read_coord)
-        try:
-          self.assertEqual(ref_coord, result)
-        except AssertionError:
-          logging.warning('Failed {}: {} -> {} (got {} instead)'
-                       .format(cigar, read_coord, ref_coord, result))
-          raise
+      for read_coord, ref_coord in read_ref_pairs:
+        if read_coord is not None:
+          ref_result = cigarlib.to_ref_coord(blocks, read_coord)
+          try:
+            self.assertEqual(ref_coord, ref_result)
+          except AssertionError:
+            logging.warning(f'Failed {cigar}: {read_coord} -> {ref_coord} (got {ref_result} instead)')
+            raise
+        if ref_coord is not None:
+          read_result = cigarlib.to_read_coord(blocks, ref_coord)
+          try:
+            self.assertEqual(read_coord, read_result)
+          except AssertionError:
+            logging.warning(f'Failed {cigar}: {ref_coord} -> {read_coord} (got {read_result} instead)')
+            raise
     return test
 
   test_data = (
     {'name':'basic', 'pos':781, 'cigar':'284M', 'flags':163, 'readlen':284,
-     'in_out_pairs':((0, None), (1, 781), (2, 782), (284, 1064), (285, None))},
+     'read_ref_pairs':((None, 780), (0, None), (1, 781), (2, 782), (284, 1064), (285, None), (None, 1065))},
     {'name':'insertion', 'pos':8112, 'cigar':'159M9I115M', 'flags':99, 'readlen':283,
-     'in_out_pairs':((159, 8270), (160, None), (168, None), (169, 8271))},
+     'read_ref_pairs':((159, 8270), (160, None), (168, None), (169, 8271))},
     {'name':'deletion', 'pos':2995, 'cigar':'111M1D172M', 'flags':99, 'readlen':283,
-     'in_out_pairs':((111, 3105), (112, 3107))},
+     'read_ref_pairs':((111, 3105), (None, 3106), (112, 3107))},
     {'name':'left_soft_padding', 'pos':5059, 'cigar':'11S267M', 'flags':99, 'readlen':278,
-     'in_out_pairs':((11, None), (12, 5059), (13, 5060))},
+     'read_ref_pairs':((11, None), (12, 5059), (13, 5060))},
     {'name':'right_soft_padding', 'pos':6274, 'cigar':'255M12S', 'flags':163, 'readlen':267,
-     'in_out_pairs':((255, 6528), (256, None))},
+     'read_ref_pairs':((255, 6528), (256, None))},
     {'name':'reverse', 'pos':6022, 'cigar':'286M', 'flags':83, 'readlen':286,
-     'in_out_pairs':((1, 6307), (2, 6306), (3, 6305), (286, 6022))},
+     'read_ref_pairs':((1, 6307), (2, 6306), (3, 6305), (286, 6022))},
     {'name':'reverse_insertion', 'pos':8027, 'cigar':'248M9I25M', 'flags':83, 'readlen':282,
-     'in_out_pairs':((1, 8299), (25, 8275), (26, None), (34, None), (35, 8274))},
+     'read_ref_pairs':((1, 8299), (25, 8275), (26, None), (34, None), (35, 8274))},
     {'name':'reverse_deletion', 'pos':2840, 'cigar':'266M1D17M', 'flags':83, 'readlen':283,
-     'in_out_pairs':((1, 3123), (2, 3122), (17, 3107), (18, 3105))},
+     'read_ref_pairs':((1, 3123), (2, 3122), (17, 3107), (18, 3105))},
     {'name':'reverse_deletion_toy', 'pos':1001, 'cigar':'100M100D100M', 'flags':83, 'readlen':200,
-     'in_out_pairs':((1, 1300), (100, 1201), (101, 1100), (200, 1001))},
+     'read_ref_pairs':((1, 1300), (100, 1201), (101, 1100), (200, 1001))},
     # The following are taken from Figure 1 of Li et al. 2009 which introduced the SAM format.
     {'name':'Li_r001', 'pos':7, 'cigar':'8M2I4M1D3M', 'flags':163, 'readlen':17,
-     'in_out_pairs':((1, 7), (8, 14), (9, None), (10, None), (11, 15), (14, 18), (15, 20))},
+     'read_ref_pairs':((1, 7), (8, 14), (9, None), (10, None), (11, 15), (14, 18), (15, 20))},
     {'name':'Li_r002', 'pos':9, 'cigar':'3S6M1P1I4M', 'flags':0, 'readlen':14,
-     'in_out_pairs':((1, None), (3, None), (4, 9), (9, 14), (10, None), (11, 15), (14, 18))},
+     'read_ref_pairs':((1, None), (3, None), (4, 9), (9, 14), (10, None), (11, 15), (14, 18))},
     {'name':'Li_r003', 'pos':9, 'cigar':'5H6M', 'flags':0, 'readlen':6,
-     'in_out_pairs':((0, None), (1, 9), (6, 14), (7, None))},
+     'read_ref_pairs':((0, None), (1, 9), (6, 14), (7, None))},
     {'name':'Li_r004', 'pos':16, 'cigar':'6M14N5M', 'flags':0, 'readlen':11,
-     'in_out_pairs':((1, 16), (6, 21), (7, 36), (11, 40))},
+     'read_ref_pairs':((1, 16), (6, 21), (7, 36), (11, 40))},
     {'name':'Li_r003r', 'pos':29, 'cigar':'6H5M', 'flags':16, 'readlen':5,
-     'in_out_pairs':((1, 33), (5, 29))},
+     'read_ref_pairs':((1, 33), (5, 29))},
     {'name':'Li_r001r', 'pos':37, 'cigar':'9M', 'flags':83, 'readlen':9,
-     'in_out_pairs':((1, 45), (9, 37))}
+     'read_ref_pairs':((1, 45), (9, 37))}
   )
 
 CigarConversionTest.make_tests()

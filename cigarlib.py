@@ -82,7 +82,12 @@ def to_ref_coord(blocks, read_coord):
   # logging.warn('No hit on read coordinate {}.'.format(read_coord))
 
 
-#TODO: def to_read_coord(blocks, ref_pos):
+def to_read_coord(blocks, ref_coord):
+  for read_start, read_end, ref_start, ref_end, offset, direction in blocks:
+    if ref_start <= ref_coord < ref_end:
+      return (ref_coord - offset)//direction
+  return None
+
 
 
 def get_contiguous_blocks(ref_pos, cigar_list, reverse, read_len):
