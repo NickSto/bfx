@@ -1,8 +1,9 @@
+CC = gcc
 CFLAGS = -Wall
 
 all:
-	gcc $(CFLAGS) readsfq.c -o readsfq
-	gcc $(CFLAGS) -shared -fPIC swalign.c -o libswalign.so -lm
+	$(CC) $(CFLAGS) readsfq.c -o readsfq
+	$(CC) $(CFLAGS) -shared -fPIC swalign.c -o libswalign.so -lm
 .PHONY: all
 
 clean:
